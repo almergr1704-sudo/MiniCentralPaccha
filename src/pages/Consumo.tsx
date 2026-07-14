@@ -330,12 +330,14 @@ export default function Consumo() {
   };
 
     const getDebtInfo = (clientId: string, codigoSuministro: string, currentMes: string, hasPendingCurrent: boolean = false) => {
-    const previousUnpaid = consumptions.filter(c => 
-      c.clientId === clientId && 
-      c.codigoSuministro === codigoSuministro && 
-      c.estadoPago === 'PENDIENTE' &&
-      c.mes !== currentMes
-    );
+    const previousUnpaid = consumptions
+      .filter(c => 
+        c.clientId === clientId && 
+        c.codigoSuministro === codigoSuministro && 
+        c.estadoPago === 'PENDIENTE' &&
+        c.mes < currentMes
+      )
+      .sort((a, b) => a.mes.localeCompare(b.mes));
     const totalDeuda = previousUnpaid.reduce((acc, c) => acc + c.montoCalculado, 0);
     const monthsOwned = previousUnpaid.length + (hasPendingCurrent ? 1 : 0);
     const settingsCostoReconexion = settings?.costoReconexion || 0;
