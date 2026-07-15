@@ -91,6 +91,26 @@ export default function Clientes() {
     setIsModalOpen(true);
   };
 
+  const handleAutoGenerateSuministro = () => {
+    let maxNum = 0;
+    clients.forEach(c => {
+      const codes = [c.codigoSuministro, ...(c.suministros || [])].filter(Boolean) as string[];
+      codes.forEach(code => {
+        let numStr = code;
+        if (code.toUpperCase().startsWith('SUM-')) {
+          numStr = code.substring(4);
+        }
+        const num = parseInt(numStr, 10);
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num;
+        }
+      });
+    });
+    const nextCodeStr = String(maxNum + 1).padStart(4, '0');
+    setSuministrosStr(nextCodeStr);
+    toast.success(`Código de suministro generado: SUM-${nextCodeStr}`);
+  };
+
   const openCreateModal = () => {
     setEditingId(null);
     setApellidoPaterno('');
@@ -112,8 +132,8 @@ export default function Clientes() {
         }
       });
     });
-    const nextNum = maxNum + 1;
-    setSuministrosStr(`${nextNum}`);
+    const nextNumStr = String(maxNum + 1).padStart(4, '0');
+    setSuministrosStr(nextNumStr);
     setIsModalOpen(true);
   };
 
@@ -756,18 +776,27 @@ export default function Clientes() {
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-slate-300">Cod. Suministro(s)</label>
-                            <div className="mt-1 flex rounded-md shadow-sm border border-slate-700 overflow-hidden focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500">
-                              <span className="inline-flex items-center px-3 border-r border-slate-700 bg-slate-800 text-slate-400 text-sm">
-                                SUM-
-                              </span>
-                              <input 
-                                type="text" 
-                                required 
-                                value={suministrosStr.split(',').map(s => s.trim().replace(/^SUM-/i, '')).join(', ')} 
-                                onChange={e => setSuministrosStr(e.target.value)} 
-                                placeholder="Ej: 001, 002" 
-                                className="flex-1 block w-full py-2 px-3 focus:outline-none sm:text-sm bg-[#0B0E14] text-slate-100" 
-                              />
+                            <div className="flex mt-1">
+                              <div className="flex flex-1 rounded-l-md border border-slate-700 overflow-hidden focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500">
+                                <span className="inline-flex items-center px-3 border-r border-slate-700 bg-slate-800 text-slate-400 text-sm">
+                                  SUM-
+                                </span>
+                                <input 
+                                  type="text" 
+                                  required 
+                                  value={suministrosStr.split(',').map(s => s.trim().replace(/^SUM-/i, '')).join(', ')} 
+                                  onChange={e => setSuministrosStr(e.target.value)} 
+                                  placeholder="Ej: 001, 002" 
+                                  className="flex-1 block w-full py-2 px-3 focus:outline-none sm:text-sm bg-[#0B0E14] text-slate-100" 
+                                />
+                              </div>
+                              <button 
+                                type="button" 
+                                onClick={handleAutoGenerateSuministro} 
+                                className="bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded-r-md text-slate-200 text-sm whitespace-nowrap border border-l-0 border-slate-700 transition"
+                              >
+                                Generar
+                              </button>
                             </div>
                             <p className="text-xs text-slate-500 mt-1">Separe múltiples códigos por comas (el prefijo SUM- se añade automáticamente).</p>
                           </div>
