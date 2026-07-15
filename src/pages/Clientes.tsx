@@ -91,6 +91,32 @@ export default function Clientes() {
     setIsModalOpen(true);
   };
 
+  const openCreateModal = () => {
+    setEditingId(null);
+    setApellidoPaterno('');
+    setApellidoMaterno('');
+    setFormData(initialFormState);
+    
+    // Auto-generate the next correlative supply code taking reference from the last registered one
+    let maxNum = 0;
+    clients.forEach(c => {
+      const codes = [c.codigoSuministro, ...(c.suministros || [])].filter(Boolean) as string[];
+      codes.forEach(code => {
+        let numStr = code;
+        if (code.toUpperCase().startsWith('SUM-')) {
+          numStr = code.substring(4);
+        }
+        const num = parseInt(numStr, 10);
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num;
+        }
+      });
+    });
+    const nextNum = maxNum + 1;
+    setSuministrosStr(`${nextNum}`);
+    setIsModalOpen(true);
+  };
+
   const filteredClients = clients.filter(c => {
     const rawFullName = c.nombre ? c.nombre : `${c.nombres || ''} ${c.apellidos || ''}`;
     const fullName = normalizeSearchText(rawFullName);
@@ -336,7 +362,7 @@ export default function Clientes() {
                 <Upload className="-ml-1 mr-2 h-5 w-5" aria-hidden="true" />
                 Importar Excel
               </Button>
-              <Button onClick={() => setIsModalOpen(true)}>
+              <Button onClick={openCreateModal}>
                 <Plus className="-ml-1 mr-2 h-5 w-5" aria-hidden="true" />
                 Nuevo Registro
               </Button>
