@@ -1533,20 +1533,20 @@ export default function Consumo() {
                       <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
                         <Filter className="w-3.5 h-3.5 text-blue-500" /> Resultados de Búsqueda ({availableSupplies.length})
                       </h4>
-                      <div className="overflow-x-auto border border-slate-800 rounded-lg bg-[#090C11]/35 max-h-[50vh] overflow-y-auto">
-                        <table className="min-w-full divide-y divide-slate-800 text-left text-xs text-slate-300">
+                      <div className="overflow-x-auto max-h-[50vh] overflow-y-auto relative rounded-lg border border-slate-800 bg-[#090C11]/35 scrollbar-thin">
+                        <table className="w-full table-fixed min-w-[900px] md:min-w-full divide-y divide-slate-800 text-left text-xs text-slate-300">
                           <thead className="bg-[#0B0F19] text-slate-400 uppercase font-bold text-[9px] tracking-wider sticky top-0 z-10 border-b border-slate-800">
                             <tr>
-                              <th className="px-4 py-3 bg-[#0B0F19]">Suministro</th>
-                              <th className="px-4 py-3 bg-[#0B0F19]">DNI/RUC</th>
-                              <th className="px-4 py-3 bg-[#0B0F19]">Titular / Razón Social</th>
-                              <th className="px-4 py-3 bg-[#0B0F19]">Dirección</th>
-                              <th className="px-4 py-3 bg-[#0B0F19]">Tipo</th>
-                              <th className="px-4 py-3 bg-[#0B0F19]">Estado</th>
-                              <th className="px-4 py-3 bg-[#0B0F19] text-right">Lectura Anterior</th>
-                              <th className="px-4 py-3 bg-[#0B0F19]">Última Lectura</th>
-                              <th className="px-4 py-3 bg-[#0B0F19] text-center">Estado {selectedMes}</th>
-                              <th className="px-4 py-3 bg-[#0B0F19] text-center">Acción</th>
+                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[10%] min-w-[80px]">Suministro</th>
+                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[10%] min-w-[80px]">DNI/RUC</th>
+                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[22%] min-w-[160px]">Titular / Razón Social</th>
+                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[18%] min-w-[140px]">Dirección</th>
+                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[7%] min-w-[65px]">Tipo</th>
+                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[7%] min-w-[65px]">Estado</th>
+                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-right text-xs font-bold text-slate-300 uppercase tracking-wider w-[9%] min-w-[70px]">Lectura Anterior</th>
+                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[9%] min-w-[80px]">Última Lectura</th>
+                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-center text-xs font-bold text-slate-300 uppercase tracking-wider w-[9%] min-w-[75px]">Estado {selectedMes}</th>
+                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-center text-xs font-bold text-slate-300 uppercase tracking-wider w-[9%] min-w-[80px]">Acción</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-800/50 bg-[#0B0E14]">
@@ -1566,42 +1566,42 @@ export default function Consumo() {
                                       setClientSearch(s.label);
                                     }}
                                   >
-                                    <td className="px-4 py-3 font-bold text-blue-400 whitespace-nowrap group-hover:text-blue-300">
+                                    <td className="px-4 py-3 font-bold text-blue-400 whitespace-normal break-words group-hover:text-blue-300 align-middle">
                                       {s.sup}
                                     </td>
-                                    <td className="px-4 py-3 font-mono text-slate-300 whitespace-nowrap">
+                                    <td className="px-4 py-3 font-mono text-slate-300 whitespace-normal break-all align-middle">
                                       {s.client.dni || '-'}
                                     </td>
-                                    <td className="px-4 py-3 font-semibold text-slate-200 truncate max-w-[180px]" title={clientName}>
+                                    <td className="px-4 py-3 font-semibold text-slate-200 whitespace-normal break-words align-middle" title={clientName}>
                                       {clientName}
                                     </td>
-                                    <td className="px-4 py-3 text-slate-400 truncate max-w-[200px]" title={`${s.client.direccion || ''} ${s.client.numeroDireccion || ''}`}>
+                                    <td className="px-4 py-3 text-slate-400 whitespace-normal break-words align-middle" title={`${s.client.direccion || ''} ${s.client.numeroDireccion || ''}`}>
                                       {s.client.direccion || '-'} {s.client.numeroDireccion || ''}
                                     </td>
-                                    <td className="px-4 py-3 whitespace-nowrap">
+                                    <td className="px-4 py-3 whitespace-normal align-middle">
                                       <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${
                                         s.client.tipo === 'SOCIO' ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-800/30' : 'bg-blue-950/50 text-blue-400 border border-blue-800/30'
                                       }`}>
                                         {s.client.tipo}
                                       </span>
                                     </td>
-                                    <td className="px-4 py-3 whitespace-nowrap">
+                                    <td className="px-4 py-3 whitespace-normal align-middle">
                                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
-                                        s.client.estado === 'ACTIVO' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+                                        s.client.state === 'ACTIVO' || s.client.estado === 'ACTIVO' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
                                       }`}>
-                                        <span className={`w-1.5 h-1.5 rounded-full ${s.client.estado === 'ACTIVO' ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
+                                        <span className={`w-1.5 h-1.5 rounded-full ${s.client.state === 'ACTIVO' || s.client.estado === 'ACTIVO' ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
                                         {s.client.estado}
                                       </span>
                                     </td>
-                                    <td className="px-4 py-3 text-right font-mono font-bold text-slate-300 whitespace-nowrap">
+                                    <td className="px-4 py-3 text-right font-mono font-bold text-slate-300 whitespace-normal align-middle">
                                       {s.lecturaAnterior} kWh
                                     </td>
-                                    <td className="px-4 py-3 text-slate-400 whitespace-nowrap text-[11px]">
+                                    <td className="px-4 py-3 text-slate-400 whitespace-normal text-[11px] align-middle">
                                       {s.fechaUltimaLectura 
                                         ? format(parseISO(s.fechaUltimaLectura), 'dd/MM/yyyy HH:mm', { locale: es }) 
                                         : 'Sin registro'}
                                     </td>
-                                    <td className="px-4 py-3 text-center whitespace-nowrap">
+                                    <td className="px-4 py-3 text-center whitespace-normal align-middle">
                                       <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border ${
                                         s.readingStatus === 'VALIDADA' 
                                           ? 'bg-emerald-950/50 text-emerald-400 border-emerald-800/40' 
@@ -1612,7 +1612,7 @@ export default function Consumo() {
                                         {s.readingStatus}
                                       </span>
                                     </td>
-                                    <td className="px-4 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                    <td className="px-4 py-3 text-center whitespace-normal align-middle" onClick={(e) => e.stopPropagation()}>
                                       <Button 
                                         type="button" 
                                         size="sm" 
