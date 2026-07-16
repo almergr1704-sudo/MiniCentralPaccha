@@ -8,7 +8,7 @@ import { toast } from 'react-hot-toast';
 import { generateGeneralPaymentReceiptPDF } from '../lib/receipts';
 
 export default function VentaServicios() {
-  const { clients, settings, addClient, updateClient, addTransaction, generateId, transactions, setSupplySocioStatus } = useAppContext();
+  const { clients, settings, addClient, updateClient, addTransaction, generateId, transactions, setSupplySocioStatus, suppliesInfo } = useAppContext();
   const [modalOpen, setModalOpen] = useState(false);
   
   // Sale Type: new client vs existing client
@@ -16,6 +16,7 @@ export default function VentaServicios() {
   
   // Existing client selection
   const [selectedClientId, setSelectedClientId] = useState('');
+  const [useExistingAddress, setUseExistingAddress] = useState(true);
   // Search query for existing client selector
   const [clientSearchQuery, setClientSearchQuery] = useState('');
   
@@ -71,6 +72,8 @@ export default function VentaServicios() {
           return;
         }
         
+        const refDir = formData.sector ? `Sector: ${formData.sector} - ${formData.referenciaDireccion}` : formData.referenciaDireccion;
+
         const newClient = await addClient({
           nombres: formData.nombres,
           apellidos: formData.apellidos,
@@ -78,7 +81,7 @@ export default function VentaServicios() {
           dni: formData.dni,
           direccion: formData.direccion,
           numeroDireccion: '',
-          referenciaDireccion: formData.sector ? `Sector: ${formData.sector} - ${formData.referenciaDireccion}` : formData.referenciaDireccion,
+          referenciaDireccion: refDir,
           telefono: formData.telefono,
           correo: '',
           codigoSuministro: formData.codigoSuministro,
@@ -89,21 +92,34 @@ export default function VentaServicios() {
           estado: 'ACTIVO'
         });
         finalClientId = newClient.id;
+
+        await setSupplySocioStatus(formData.codigoSuministro, formData.tipo === 'SOCIO', {
+          direccion: formData.direccion,
+          sector: formData.sector,
+          referenciaDireccion: refDir
+        });
       } else {
         if (!selectedClientId) {
           toast.error('Debe seleccionar un cliente existente');
           return;
         }
+        const clientObj = clients.find(c => c.id === selectedClientId);
+        const refDir = useExistingAddress 
+          ? (clientObj?.referenciaDireccion || '') 
+          : (formData.sector ? `Sector: ${formData.sector} - ${formData.referenciaDireccion}` : formData.referenciaDireccion);
+
         await updateClient(selectedClientId, {
-          suministros: [...(clients.find(c => c.id === selectedClientId)?.suministros || []), formData.codigoSuministro] as string[],
+          suministros: [...(clientObj?.suministros || []), formData.codigoSuministro] as string[],
           numeroMedidor: formData.numeroMedidor || undefined
         });
-        await setSupplySocioStatus(formData.codigoSuministro, formData.tipo === 'SOCIO');
+
+        await setSupplySocioStatus(formData.codigoSuministro, formData.tipo === 'SOCIO', {
+          direccion: useExistingAddress ? (clientObj?.direccion || '') : formData.direccion,
+          sector: useExistingAddress ? '' : formData.sector,
+          referenciaDireccion: refDir
+        });
         finalClientId = selectedClientId;
       }
-
-      // Ensure the new supply has its own socio/usuario status
-      await setSupplySocioStatus(formData.codigoSuministro, formData.tipo === 'SOCIO');
 
       // Add a transaction for the sale
       if (formData.montoPagado > 0) {
@@ -148,6 +164,7 @@ export default function VentaServicios() {
     setSaleType('NEW_CLIENT');
     setSelectedClientId('');
     setClientSearchQuery('');
+    setUseExistingAddress(true);
   };
 
   // Get sales history (transactions related to new supply sales)
@@ -178,7 +195,8 @@ export default function VentaServicios() {
   }, [clients, selectedClientId]);
 
   const handlePrintReceipt = (sale: Transaction, client: Client | undefined) => {
-    const success = generateGeneralPaymentReceiptPDF(sale, client);
+    const supplyAddr = suppliesInfo?.find(s => s.codigo === sale.codigoSuministro)?.direccion;
+    const success = generateGeneralPaymentReceiptPDF(sale, client, supplyAddr);
     if (success) {
       toast.success('Comprobante generado con éxito');
     } else {
@@ -365,9 +383,76 @@ export default function VentaServicios() {
                              )}
                              <p className="text-[10px] text-slate-400 mt-2 italic">
                                Al procesar la venta, se generará y anexará un suministro adicional a este cliente.
-                             </p>
-                           </div>
-                         </div>
+                              </p>
+                            </div>
+
+                            {/* Address selection for new supply of existing client */}
+                            <div className="mt-4 pt-3 border-t border-slate-800/80 space-y-3">
+                              <label className="block text-xs font-semibold uppercase text-slate-400 tracking-wider">Dirección de Suministro</label>
+                              <div className="grid grid-cols-2 gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setUseExistingAddress(true)}
+                                  className={`py-2 px-3 text-xs font-medium rounded border transition ${
+                                    useExistingAddress 
+                                      ? 'bg-blue-600/10 border-blue-500 text-blue-400' 
+                                      : 'bg-slate-900/40 border-slate-800 text-slate-400 hover:bg-slate-800/50'
+                                  }`}
+                                >
+                                  Usar Dirección Anterior
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setUseExistingAddress(false)}
+                                  className={`py-2 px-3 text-xs font-medium rounded border transition ${
+                                    !useExistingAddress 
+                                      ? 'bg-blue-600/10 border-blue-500 text-blue-400' 
+                                      : 'bg-slate-900/40 border-slate-800 text-slate-400 hover:bg-slate-800/50'
+                                  }`}
+                                >
+                                  Registrar Nueva Dirección
+                                </button>
+                              </div>
+
+                              {!useExistingAddress && (
+                                <div className="space-y-3 bg-slate-900/30 p-3 rounded-md border border-slate-800/60 mt-3">
+                                  <div>
+                                    <label className="block text-xs font-medium text-slate-400">Nueva Dirección *</label>
+                                    <input 
+                                      type="text" 
+                                      required 
+                                      value={formData.direccion} 
+                                      onChange={e => setFormData({...formData, direccion: e.target.value})} 
+                                      placeholder="Ej: Jr. Comercio N° 456"
+                                      className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-xs focus:outline-none focus:ring-blue-500 text-slate-200" 
+                                    />
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <label className="block text-xs font-medium text-slate-400">Sector / Barrio</label>
+                                      <input 
+                                        type="text" 
+                                        value={formData.sector} 
+                                        onChange={e => setFormData({...formData, sector: e.target.value})} 
+                                        placeholder="Ej: Sector Alto"
+                                        className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-xs focus:outline-none focus:ring-blue-500 text-slate-200" 
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-medium text-slate-400">Referencia</label>
+                                      <input 
+                                        type="text" 
+                                        value={formData.referenciaDireccion} 
+                                        onChange={e => setFormData({...formData, referenciaDireccion: e.target.value})} 
+                                        placeholder="Ej: Costado de la escuela"
+                                        className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-xs focus:outline-none focus:ring-blue-500 text-slate-200" 
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                        ) : (
                          <div className="space-y-2">
                            <label className="block text-sm font-medium text-slate-300">Buscar por Suministro, DNI o Nombres</label>

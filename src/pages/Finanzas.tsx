@@ -12,7 +12,7 @@ import * as XLSX from 'xlsx';
 import { TransactionType, Transaction } from '../store/types';
 import { toast } from 'react-hot-toast';
 import { generateGeneralPaymentReceiptPDF, generatePayrollReceiptPDF } from '../lib/receipts';
-import { Briefcase } from 'lucide-react';
+import { Briefcase, ArrowUpDown } from 'lucide-react';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
@@ -91,7 +91,10 @@ export default function Finanzas() {
 
   const [workerSearchDni, setWorkerSearchDni] = useState('');
   const [workerSearchName, setWorkerSearchName] = useState('');
-  const [workerSortBy, setWorkerSortBy] = useState<'nombre' | 'dni'>('nombre');
+  const [workerSortColumn, setWorkerSortColumn] = useState<'dni' | 'nombre' | 'cargo' | 'area' | 'estado' | 'ultimoPago' | 'estadoPago'>('nombre');
+  const [workerSortDirection, setWorkerSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [workerPageSize, setWorkerPageSize] = useState<number>(10);
+  const [workerCurrentPage, setWorkerCurrentPage] = useState<number>(1);
 
   const closeModal = () => {
     setIsModalOpen(false);
@@ -105,7 +108,10 @@ export default function Finanzas() {
     setSearchName('');
     setWorkerSearchDni('');
     setWorkerSearchName('');
-    setWorkerSortBy('nombre');
+    setWorkerSortColumn('nombre');
+    setWorkerSortDirection('asc');
+    setWorkerPageSize(10);
+    setWorkerCurrentPage(1);
     setSueldoForm({
       trabajadorId: '',
       trabajadorNombreCompleto: '',
@@ -1763,24 +1769,13 @@ export default function Finanzas() {
       )}
 
       {isModalOpen === 'PAGO_SUELDO' && (() => {
-        // Filter and sort trabalhadores list dynamically based on real-time filters
+        // Filter and sort trabajadores list dynamically based on real-time filters
         const filteredTrabajadores = (trabajadores || []).filter((t: any) => {
           if (!t) return false;
           const matchesDni = workerSearchDni ? (t.dni || '').toLowerCase().includes(workerSearchDni.toLowerCase()) : true;
           const fullName = `${t.apellidos || ''} ${t.nombres || ''}`.toLowerCase();
           const matchesName = workerSearchName ? normalizeSearchText(fullName).includes(normalizeSearchText(workerSearchName)) : true;
           return matchesDni && matchesName;
-        });
-
-        // Automatic ascending sorting
-        const sortedTrabajadores = [...filteredTrabajadores].sort((a: any, b: any) => {
-          if (workerSortBy === 'dni') {
-            return (a.dni || '').localeCompare(b.dni || '');
-          } else {
-            const nameA = `${a.apellidos || ''}, ${a.nombres || ''}`.toLowerCase();
-            const nameB = `${b.apellidos || ''}, ${b.nombres || ''}`.toLowerCase();
-            return nameA.localeCompare(nameB);
-          }
         });
 
         const getAreaForCargo = (cargo: string) => {
@@ -1802,11 +1797,73 @@ export default function Finanzas() {
           return `${mName} ${year}`;
         };
 
+        const getRawUltimoPago = (trabajadorId: string) => {
+          const list = (pagosSueldos || []).filter((p: any) => p && p.trabajadorId === trabajadorId);
+          if (list.length === 0) return '';
+          const sorted = [...list].sort((a: any, b: any) => b.mesPagado.localeCompare(a.mesPagado));
+          return sorted[0].mesPagado;
+        };
+
         const getEstadoPago = (trabajadorId: string) => {
           const isPaid = (pagosSueldos || []).some(
             (p: any) => p && p.trabajadorId === trabajadorId && p.mesPagado === sueldoForm.mesPagado
           );
           return isPaid ? 'Pagado' : 'Pendiente';
+        };
+
+        // Advanced sorting based on columns
+        const sortedTrabajadores = [...filteredTrabajadores].sort((a: any, b: any) => {
+          let comparison = 0;
+          if (workerSortColumn === 'dni') {
+            comparison = (a.dni || '').localeCompare(b.dni || '');
+          } else if (workerSortColumn === 'nombre') {
+            const nameA = `${a.apellidos || ''}, ${a.nombres || ''}`.toLowerCase();
+            const nameB = `${b.apellidos || ''}, ${b.nombres || ''}`.toLowerCase();
+            comparison = nameA.localeCompare(nameB);
+          } else if (workerSortColumn === 'cargo') {
+            comparison = (a.cargo || '').localeCompare(b.cargo || '');
+          } else if (workerSortColumn === 'area') {
+            comparison = getAreaForCargo(a.cargo).localeCompare(getAreaForCargo(b.cargo));
+          } else if (workerSortColumn === 'estado') {
+            comparison = (a.estado || '').localeCompare(b.estado || '');
+          } else if (workerSortColumn === 'ultimoPago') {
+            comparison = getRawUltimoPago(a.id).localeCompare(getRawUltimoPago(b.id));
+          } else if (workerSortColumn === 'estadoPago') {
+            comparison = getEstadoPago(a.id).localeCompare(getEstadoPago(b.id));
+          }
+
+          return workerSortDirection === 'asc' ? comparison : -comparison;
+        });
+
+        // Pagination calculations
+        const totalItems = sortedTrabajadores.length;
+        const totalPages = Math.ceil(totalItems / workerPageSize);
+        const currentPage = Math.max(1, Math.min(workerCurrentPage, totalPages || 1));
+        const startIndex = (currentPage - 1) * workerPageSize;
+        const paginatedTrabajadores = sortedTrabajadores.slice(startIndex, startIndex + workerPageSize);
+
+        const renderHeader = (colId: typeof workerSortColumn, label: string, widthClass: string, isCenter = false) => {
+          const isActive = workerSortColumn === colId;
+          return (
+            <th
+              scope="col"
+              onClick={() => {
+                if (workerSortColumn === colId) {
+                  setWorkerSortDirection(workerSortDirection === 'asc' ? 'desc' : 'asc');
+                } else {
+                  setWorkerSortColumn(colId);
+                  setWorkerSortDirection('asc');
+                }
+                setWorkerCurrentPage(1);
+              }}
+              className={`px-2 py-2 cursor-pointer hover:bg-slate-800/80 hover:text-slate-200 select-none transition-colors duration-150 ${widthClass}`}
+            >
+              <div className={`flex items-center gap-1 ${isCenter ? 'justify-center' : ''}`}>
+                <span className="truncate">{label}</span>
+                <ArrowUpDown className={`w-3 h-3 flex-shrink-0 transition-colors ${isActive ? 'text-blue-400' : 'text-slate-650 opacity-40'}`} />
+              </div>
+            </th>
+          );
         };
 
         return (
@@ -1816,7 +1873,7 @@ export default function Finanzas() {
 
               <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
 
-              <div className="relative z-10 inline-block align-bottom bg-[#111622] rounded-xl border border-slate-800 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-5xl sm:w-full">
+              <div className="relative z-10 inline-block align-bottom bg-[#111622] rounded-xl border border-slate-800 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-5xl lg:max-w-6xl xl:max-w-7xl sm:w-full">
                 <form onSubmit={handleSueldoSubmit}>
                   <div className="p-6 space-y-6">
                     <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -1829,13 +1886,13 @@ export default function Finanzas() {
 
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                       {/* Sección Izquierda: Búsqueda y Selección */}
-                      <div className="lg:col-span-7 space-y-4 lg:border-r lg:border-slate-800/60 lg:pr-6">
+                      <div className="lg:col-span-8 space-y-4 lg:border-r lg:border-slate-800/60 lg:pr-6">
                         <div className="flex items-center justify-between">
                           <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
                             <Search className="w-3.5 h-3.5 text-blue-500" /> 1. Localizar Trabajador
                           </h4>
                           <span className="text-[10px] text-slate-500 font-mono">
-                            {sortedTrabajadores.length} trabajadores filtrados
+                            {totalItems} trabajadores encontrados
                           </span>
                         </div>
 
@@ -1854,7 +1911,10 @@ export default function Finanzas() {
                                 className="block w-full pl-8 pr-2 py-1.5 bg-[#07090E] border border-slate-800 rounded text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                                 placeholder="Buscar por nombres..."
                                 value={workerSearchName}
-                                onChange={(e) => setWorkerSearchName(e.target.value)}
+                                onChange={(e) => {
+                                  setWorkerSearchName(e.target.value);
+                                  setWorkerCurrentPage(1);
+                                }}
                               />
                             </div>
                           </div>
@@ -1872,65 +1932,39 @@ export default function Finanzas() {
                                 className="block w-full pl-8 pr-2 py-1.5 bg-[#07090E] border border-slate-800 rounded text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                                 placeholder="Buscar por DNI..."
                                 value={workerSearchDni}
-                                onChange={(e) => setWorkerSearchDni(e.target.value)}
+                                onChange={(e) => {
+                                  setWorkerSearchDni(e.target.value);
+                                  setWorkerCurrentPage(1);
+                                }}
                               />
                             </div>
                           </div>
                         </div>
 
-                        {/* Opciones de ordenamiento */}
-                        <div className="flex items-center justify-between text-xs text-slate-400 bg-slate-900/30 px-3 py-1.5 rounded-lg border border-slate-800/40">
-                          <span className="text-[11px]">Ordenamiento ascendente:</span>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setWorkerSortBy('nombre')}
-                              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all ${
-                                workerSortBy === 'nombre'
-                                  ? 'bg-blue-600/10 text-blue-400 border-blue-500/30'
-                                  : 'bg-transparent text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'
-                              }`}
-                            >
-                              Apellidos y Nombres (A–Z)
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setWorkerSortBy('dni')}
-                              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all ${
-                                workerSortBy === 'dni'
-                                  ? 'bg-blue-600/10 text-blue-400 border-blue-500/30'
-                                  : 'bg-transparent text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'
-                              }`}
-                            >
-                              DNI (Menor a Mayor)
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Tabla de Resultados */}
+                        {/* Tabla de Resultados: 100% de ancho adaptado, sticky header y sin desplazamiento horizontal */}
                         <div className="border border-slate-800 rounded-lg overflow-hidden bg-[#0A0D15]/30">
-                          <div className="overflow-x-auto max-h-[260px] overflow-y-auto scrollbar-thin">
-                            <table className="w-full table-fixed min-w-[650px] divide-y divide-slate-800 text-left text-xs text-slate-300">
+                          <div className="max-h-[300px] overflow-y-auto scrollbar-thin">
+                            <table className="w-full table-fixed divide-y divide-slate-800 text-left text-[11px] text-slate-300">
                               <thead className="bg-[#0B0F19] text-slate-400 uppercase font-bold text-[9px] tracking-wider sticky top-0 z-10 border-b border-slate-800">
                                 <tr>
-                                  <th scope="col" className="px-3 py-2 w-[15%] bg-[#0B0F19]">DNI</th>
-                                  <th scope="col" className="px-3 py-2 w-[30%] bg-[#0B0F19]">Apellidos y Nombres</th>
-                                  <th scope="col" className="px-3 py-2 w-[20%] bg-[#0B0F19]">Cargo / Puesto</th>
-                                  <th scope="col" className="px-3 py-2 w-[15%] bg-[#0B0F19]">Área / Dependencia</th>
-                                  <th scope="col" className="px-3 py-2 w-[12%] text-center bg-[#0B0F19]">Estado</th>
-                                  <th scope="col" className="px-3 py-2 w-[15%] bg-[#0B0F19]">Último Pago</th>
-                                  <th scope="col" className="px-3 py-2 w-[15%] text-center bg-[#0B0F19]">Estado Pago</th>
+                                  {renderHeader('dni', 'DNI', 'w-[12%]')}
+                                  {renderHeader('nombre', 'Apellidos y Nombres', 'w-[28%]')}
+                                  {renderHeader('cargo', 'Cargo / Puesto', 'w-[18%]')}
+                                  {renderHeader('area', 'Área / Dependencia', 'w-[15%]')}
+                                  {renderHeader('estado', 'Estado', 'w-[8%]', true)}
+                                  {renderHeader('ultimoPago', 'Período', 'w-[10%]')}
+                                  {renderHeader('estadoPago', 'Estado Pago', 'w-[9%]', true)}
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-800/40 bg-[#0B0E14]/40">
-                                {sortedTrabajadores.length === 0 ? (
+                                {paginatedTrabajadores.length === 0 ? (
                                   <tr>
                                     <td colSpan={7} className="px-4 py-8 text-center text-slate-500 text-xs">
                                       No se encontraron trabajadores con los filtros especificados.
                                     </td>
                                   </tr>
                                 ) : (
-                                  sortedTrabajadores.map((t: any) => {
+                                  paginatedTrabajadores.map((t: any) => {
                                     const isSelected = sueldoForm.trabajadorId === t.id;
                                     const area = getAreaForCargo(t.cargo);
                                     const ultimoPago = getUltimoPago(t.id);
@@ -1956,19 +1990,19 @@ export default function Finanzas() {
                                             : 'hover:bg-slate-800/35'
                                         }`}
                                       >
-                                        <td className={`px-3 py-2 font-mono font-medium ${isSelected ? 'text-blue-400' : 'text-slate-300'}`}>
+                                        <td className={`px-2.5 py-2.5 font-mono font-medium ${isSelected ? 'text-blue-400' : 'text-slate-300'} break-all`}>
                                           {t.dni}
                                         </td>
-                                        <td className="px-3 py-2 font-semibold text-slate-100 whitespace-normal break-words">
+                                        <td className="px-2.5 py-2.5 font-semibold text-slate-100 whitespace-normal break-words leading-snug">
                                           {t.apellidos}, {t.nombres}
                                         </td>
-                                        <td className="px-3 py-2 text-slate-300 whitespace-normal break-words">
+                                        <td className="px-2.5 py-2.5 text-slate-300 whitespace-normal break-words leading-snug">
                                           {t.cargo || '-'}
                                         </td>
-                                        <td className="px-3 py-2 text-slate-450 text-[11px] whitespace-normal">
+                                        <td className="px-2.5 py-2.5 text-slate-450 whitespace-normal break-words leading-snug">
                                           {area}
                                         </td>
-                                        <td className="px-3 py-2 text-center">
+                                        <td className="px-2.5 py-2.5 text-center">
                                           <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold ${
                                             t.estado === 'ACTIVO' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
                                           }`}>
@@ -1976,10 +2010,10 @@ export default function Finanzas() {
                                             {t.estado}
                                           </span>
                                         </td>
-                                        <td className="px-3 py-2 text-slate-400 text-[11px] font-mono whitespace-normal">
+                                        <td className="px-2.5 py-2.5 text-slate-400 font-mono whitespace-normal break-words">
                                           {ultimoPago}
                                         </td>
-                                        <td className="px-3 py-2 text-center">
+                                        <td className="px-2.5 py-2.5 text-center">
                                           <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold ${
                                             estadoPago === 'Pagado'
                                               ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-850/40'
@@ -1997,11 +2031,63 @@ export default function Finanzas() {
                               </tbody>
                             </table>
                           </div>
+
+                          {/* Paginación y control de registros */}
+                          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#0B0F19] px-4 py-3 border-t border-slate-800 text-xs text-slate-400">
+                            <div className="flex items-center gap-2">
+                              <span>Mostrar</span>
+                              <select
+                                value={workerPageSize}
+                                onChange={(e) => {
+                                  setWorkerPageSize(Number(e.target.value));
+                                  setWorkerCurrentPage(1);
+                                }}
+                                className="bg-[#07090E] border border-slate-800 text-xs text-slate-200 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500"
+                              >
+                                {[10, 20, 50, 100].map((size) => (
+                                  <option key={size} value={size}>
+                                    {size}
+                                  </option>
+                                ))}
+                              </select>
+                              <span>registros por página</span>
+                            </div>
+
+                            <div className="flex items-center gap-4">
+                              <span className="text-slate-500 font-mono text-[11px]">
+                                {totalItems === 0
+                                  ? 'Sin registros'
+                                  : `Mostrando ${startIndex + 1} - ${Math.min(startIndex + workerPageSize, totalItems)} de ${totalItems}`}
+                              </span>
+
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  disabled={currentPage === 1}
+                                  onClick={() => setWorkerCurrentPage(currentPage - 1)}
+                                  className="p-1 rounded bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  <ChevronLeft className="w-4 h-4" />
+                                </button>
+                                <span className="px-2.5 py-1 bg-slate-900 border border-slate-800 text-slate-200 rounded font-mono text-xs font-bold">
+                                  {currentPage} / {totalPages || 1}
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={currentPage >= totalPages}
+                                  onClick={() => setWorkerCurrentPage(currentPage + 1)}
+                                  className="p-1 rounded bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  <ChevronRight className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
 
                       {/* Sección Derecha: Datos de Pago */}
-                      <div className="lg:col-span-5 space-y-4">
+                      <div className="lg:col-span-4 space-y-4">
                         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
                           <Briefcase className="w-3.5 h-3.5 text-emerald-500" /> 2. Registro del Pago
                         </h4>

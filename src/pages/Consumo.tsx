@@ -1051,12 +1051,15 @@ export default function Consumo() {
           if (!normalizedName.includes(normalizedQuery)) return;
         }
 
+        const supplyInfo = (suppliesInfo || []).find(si => si.codigo === sup);
+        const currentDireccion = supplyInfo?.direccion || c.direccion || '';
+
         if (clientSearch && !formData.clientAndSuministro) {
           const normalizedGeneral = normalizeSearchText(clientSearch);
           const normalizedSup = normalizeSearchText(sup);
           const normalizedDni = normalizeSearchText(c.dni || '');
           const normalizedName = normalizeSearchText(fullName);
-          const normalizedDir = normalizeSearchText(c.direccion || '');
+          const normalizedDir = normalizeSearchText(currentDireccion);
 
           const match = normalizedSup.includes(normalizedGeneral) ||
                         normalizedDni.includes(normalizedGeneral) ||
@@ -1086,8 +1089,11 @@ export default function Consumo() {
           id: c.id,
           sup: sup,
           label: `${sup} - ${fullName}`,
-          desc: `DNI/RUC: ${c.dni} | Direcc: ${c.direccion || '-'} | Tipo: ${c.tipo} | Est: ${c.estado}`,
-          client: c,
+          desc: `DNI/RUC: ${c.dni} | Direcc: ${currentDireccion || '-'} | Tipo: ${c.tipo} | Est: ${c.estado}`,
+          client: {
+            ...c,
+            direccion: currentDireccion
+          },
           lecturaAnterior: lecturaAnteriorVal,
           fechaUltimaLectura: fechaUltimaLectura,
           readingStatus: readingStatus,
@@ -1534,19 +1540,19 @@ export default function Consumo() {
                         <Filter className="w-3.5 h-3.5 text-blue-500" /> Resultados de Búsqueda ({availableSupplies.length})
                       </h4>
                       <div className="overflow-x-auto max-h-[50vh] overflow-y-auto relative rounded-lg border border-slate-800 bg-[#090C11]/35 scrollbar-thin">
-                        <table className="w-full table-fixed min-w-[900px] md:min-w-full divide-y divide-slate-800 text-left text-xs text-slate-300">
+                        <table className="w-full table-fixed divide-y divide-slate-800 text-left text-xs text-slate-300">
                           <thead className="bg-[#0B0F19] text-slate-400 uppercase font-bold text-[9px] tracking-wider sticky top-0 z-10 border-b border-slate-800">
                             <tr>
-                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[10%] min-w-[80px]">Suministro</th>
-                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[10%] min-w-[80px]">DNI/RUC</th>
-                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[22%] min-w-[160px]">Titular / Razón Social</th>
-                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[18%] min-w-[140px]">Dirección</th>
-                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[7%] min-w-[65px]">Tipo</th>
-                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[7%] min-w-[65px]">Estado</th>
-                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-right text-xs font-bold text-slate-300 uppercase tracking-wider w-[9%] min-w-[70px]">Lectura Anterior</th>
-                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[9%] min-w-[80px]">Última Lectura</th>
-                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-center text-xs font-bold text-slate-300 uppercase tracking-wider w-[9%] min-w-[75px]">Estado {selectedMes}</th>
-                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-center text-xs font-bold text-slate-300 uppercase tracking-wider w-[9%] min-w-[80px]">Acción</th>
+                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[9%]">Suministro</th>
+                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[9%]">DNI/RUC</th>
+                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[23%]">Titular / Razón Social</th>
+                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[18%]">Dirección</th>
+                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[6%]">Tipo</th>
+                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[7%]">Estado</th>
+                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-right text-xs font-bold text-slate-300 uppercase tracking-wider w-[8%]">Lectura Anterior</th>
+                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[8%]">Última Lectura</th>
+                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-center text-xs font-bold text-slate-300 uppercase tracking-wider w-[11%]">Estado {selectedMes}</th>
+                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-center text-xs font-bold text-slate-300 uppercase tracking-wider w-[11%]">Acción</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-800/50 bg-[#0B0E14]">

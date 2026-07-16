@@ -46,7 +46,7 @@ interface AppContextType extends AppState {
   addAdmin: (admin: any) => Promise<void>;
   deleteConsumption: (id: string, reason: string) => Promise<void>;
   markSupplyAsSocio: (supplyCode: string) => Promise<void>;
-  setSupplySocioStatus: (supplyCode: string, isSocio: boolean) => Promise<void>;
+  setSupplySocioStatus: (supplyCode: string, isSocio: boolean, addressInfo?: { direccion?: string; sector?: string; referenciaDireccion?: string }) => Promise<void>;
   login: (email: string) => void;
   logout: () => void;
   addTrabajador: (trabajador: Omit<Trabajador, 'id' | 'fechaRegistro'>) => Promise<void>;
@@ -493,15 +493,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addAuditLog('ACTUALIZAR', 'SOCIOS', `Asignó condición de SOCIO permanente al suministro ${supplyCode}`);
   };
 
-  const setSupplySocioStatus = async (supplyCode: string, isSocio: boolean) => {
-    if (state.suppliesInfo.some(s => s.codigo === supplyCode && s.isSocio === isSocio)) return;
+  const setSupplySocioStatus = async (
+    supplyCode: string, 
+    isSocio: boolean, 
+    addressInfo?: { direccion?: string; sector?: string; referenciaDireccion?: string }
+  ) => {
+    const existing = state.suppliesInfo.find(s => s.codigo === supplyCode);
+    const hasSocioDiff = existing ? existing.isSocio !== isSocio : true;
+    const hasAddressDiff = addressInfo ? (
+      existing?.direccion !== addressInfo.direccion ||
+      existing?.sector !== addressInfo.sector ||
+      existing?.referenciaDireccion !== addressInfo.referenciaDireccion
+    ) : false;
+
+    if (!hasSocioDiff && !hasAddressDiff && existing) return;
+
     const newSocioInfo = {
       codigo: supplyCode,
       isSocio,
-      fechaSocio: isSocio ? new Date().toISOString() : undefined
+      fechaSocio: isSocio ? (existing?.fechaSocio || new Date().toISOString()) : undefined,
+      direccion: addressInfo?.direccion ?? existing?.direccion ?? '',
+      sector: addressInfo?.sector ?? existing?.sector ?? '',
+      referenciaDireccion: addressInfo?.referenciaDireccion ?? existing?.referenciaDireccion ?? ''
     };
-    await setDoc(doc(db, 'suppliesInfo', supplyCode), newSocioInfo);
-    addAuditLog('ACTUALIZAR', 'SOCIOS', `Definió condición de ${isSocio ? 'SOCIO' : 'USUARIO'} al suministro ${supplyCode}`);
+    await setDoc(doc(db, 'suppliesInfo', supplyCode), cleanUndefinedKeys(newSocioInfo));
+    addAuditLog('ACTUALIZAR', 'SOCIOS', `Definió condición de ${isSocio ? 'SOCIO' : 'USUARIO'} y dirección al suministro ${supplyCode}`);
   };
 
   const addClient = async (client: Omit<Client, 'id' | 'fechaRegistro'>): Promise<Client> => {
@@ -542,22 +558,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const batch = writeBatch(db);
-    batch.set(doc(db, 'clients', newId), newClient);
+    batch.set(doc(db, 'clients', newId), cleanUndefinedKeys(newClient));
 
-    if (client.tipo === 'SOCIO') {
-      const suppliesToMark = client.suministros?.length ? client.suministros : [client.codigoSuministro].filter(Boolean);
-      suppliesToMark.forEach(sup => {
-        if (!sup) return;
-        if (!state.suppliesInfo.some(s => s.codigo === sup && s.isSocio)) {
-          const item = {
-            codigo: sup,
-            isSocio: true,
-            fechaSocio: new Date().toISOString()
-          };
-          batch.set(doc(db, 'suppliesInfo', sup), item);
-        }
-      });
-    }
+    const suppliesToMark = client.suministros?.length ? client.suministros : [client.codigoSuministro].filter(Boolean);
+    suppliesToMark.forEach(sup => {
+      if (!sup) return;
+      const normalizedSup = normalizeSupplyCode(sup);
+      const isSocio = client.tipo === 'SOCIO';
+      const item = {
+        codigo: normalizedSup,
+        isSocio,
+        fechaSocio: isSocio ? new Date().toISOString() : undefined,
+        direccion: client.direccion || '',
+        referenciaDireccion: client.referenciaDireccion || '',
+        sector: ''
+      };
+      batch.set(doc(db, 'suppliesInfo', normalizedSup), cleanUndefinedKeys(item));
+    });
 
     await batch.commit();
     addAuditLog('CREAR', 'SOCIOS', `Creó socio/usuario: ${client.dni}`);
@@ -604,10 +621,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const clientDoc = doc(db, 'clients', id);
-    await updateDoc(clientDoc, {
+    await updateDoc(clientDoc, cleanUndefinedKeys({
       ...updates,
       updatedBy: user?.email || 'Unknown'
-    });
+    }));
     addAuditLog('ACTUALIZAR', 'SOCIOS', `Actualizó socio/usuario: ${id}`);
   };
 
@@ -1276,10 +1293,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error('El sueldo mensual debe ser mayor a cero.');
     }
 
-    await updateDoc(doc(db, 'trabajadores', id), {
+    await updateDoc(doc(db, 'trabajadores', id), cleanUndefinedKeys({
       ...updates,
       updatedBy: user?.email || 'Unknown'
-    });
+    }));
     addAuditLog('ACTUALIZAR', 'SISTEMA', `Actualizó información del trabajador ID: ${id}`);
   };
 

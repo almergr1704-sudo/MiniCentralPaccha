@@ -110,6 +110,9 @@ export interface SupplyInfo {
   codigo: string;
   isSocio: boolean;
   fechaSocio?: string;
+  direccion?: string;
+  sector?: string;
+  referenciaDireccion?: string;
 }
 
 export interface Trabajador {

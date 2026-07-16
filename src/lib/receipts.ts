@@ -15,7 +15,7 @@ import { Transaction, Client, PagoSueldo } from '../store/types';
  * - Certificados y constancias
  * - Otros conceptos de cobranza
  */
-export function generateGeneralPaymentReceiptPDF(transaction: Transaction, client: Client | undefined): boolean {
+export function generateGeneralPaymentReceiptPDF(transaction: Transaction, client: Client | undefined, supplyAddress?: string): boolean {
   try {
     // Ticket format width 80mm, with dynamic length or a tall 175mm default to fit details & QR
     const doc = new jsPDF({
@@ -102,7 +102,7 @@ export function generateGeneralPaymentReceiptPDF(transaction: Transaction, clien
       doc.text(`Condición: ${isSocio}`, 5, nextY + 4);
       
       // Handle Address
-      const addressVal = client.direccion || 'Sin dirección registrada';
+      const addressVal = supplyAddress || client?.direccion || 'Sin dirección registrada';
       const addressLines = doc.splitTextToSize(`Dirección: ${addressVal}`, 68);
       doc.text(addressLines, 5, nextY + 8);
 
@@ -447,7 +447,8 @@ export function generateConsumptionTicketPDF(
   cons: any,
   client: Client,
   settings: any,
-  debtInfo: any
+  debtInfo: any,
+  supplyAddress?: string
 ): boolean {
   try {
     const doc = new jsPDF({
@@ -507,7 +508,7 @@ export function generateConsumptionTicketPDF(
     
     doc.text(`DNI: ${client.dni || 'No Registrado'}`, 5, yAfterName);
     
-    const addressVal = client.direccion || 'Sin dirección';
+    const addressVal = supplyAddress || client.direccion || 'Sin dirección';
     const addressLines = doc.splitTextToSize(`Dirección: ${addressVal}`, 68);
     doc.text(addressLines, 5, yAfterName + 5);
     
