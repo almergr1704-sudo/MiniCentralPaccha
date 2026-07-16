@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, ArrowUpRight, ArrowDownRight, Filter, Download, FileText, FileWarning, PowerOff, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, ArrowUpRight, ArrowDownRight, Filter, Download, FileText, FileWarning, PowerOff, ChevronLeft, ChevronRight, User, MapPin, CreditCard, Activity, CheckCircle, RefreshCw, AlertCircle, Search } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import { Button, Card, CardContent, Badge, CardHeader, CardTitle, Pagination } from '../components/ui';
 import { useConfirm } from '../components/ui/ConfirmDialog';
@@ -700,29 +700,52 @@ export default function Finanzas() {
     const rawFullName = c.nombre ? c.nombre : `${c.nombres || ''} ${c.apellidos || ''}`;
     const fullName = normalizeSearchText(rawFullName);
     const dni = normalizeSearchText(c.dni || '');
+    const address = normalizeSearchText(c.direccion || '');
     const clientSupplies = c.suministros?.length ? c.suministros : [c.codigoSuministro];
     const allSuppliesStr = normalizeSearchText(clientSupplies.join(' '));
     return allSuppliesStr.includes(searchNormalized) ||
            dni.includes(searchNormalized) ||
-           fullName.includes(searchNormalized);
+           fullName.includes(searchNormalized) ||
+           address.includes(searchNormalized);
   });
 
   const availableSupplies = React.useMemo(() => {
-     let supplies: { id: string, sup: string, label: string, desc: string }[] = [];
+     let supplies: { 
+       id: string; 
+       sup: string; 
+       label: string; 
+       desc: string;
+       client: typeof clients[0];
+       pendingBalance: number;
+       hasDebt: boolean;
+     }[] = [];
      searchedClients.forEach(c => {
         const clientSupplies = c.suministros?.length ? c.suministros : [c.codigoSuministro];
         clientSupplies.forEach(sup => {
            if (!sup) return;
+           
+           const supplyConsumptions = consumptions.filter(cons => cons.clientId === c.id && cons.codigoSuministro === sup && cons.estadoPago === 'PENDIENTE');
+           const consSum = supplyConsumptions.reduce((sum, cons) => sum + cons.montoCalculado, 0);
+           
+           const clientFines = (fines || []).filter(f => f.clientId === c.id && f.estadoPago === 'PENDIENTE');
+           const finesSum = clientFines.reduce((sum, f) => sum + f.monto, 0);
+           
+           const reconFee = c.estado === 'CORTADO' ? (settings?.costoReconexion || 0) : 0;
+           const totalPending = consSum + finesSum + reconFee;
+
            supplies.push({
               id: c.id,
               sup: sup,
               label: `${sup} - ${c.nombre ? c.nombre : `${c.nombres || ''} ${c.apellidos || ''}`}`,
-              desc: `DNI/RUC: ${c.dni} | Direcc: ${c.direccion || '-'} | Tipo: ${c.tipo} | Est: ${c.estado}`
+              desc: `DNI/RUC: ${c.dni} | Direcc: ${c.direccion || '-'} | Tipo: ${c.tipo} | Est: ${c.estado}`,
+              client: c,
+              pendingBalance: totalPending,
+              hasDebt: totalPending > 0
            });
         });
      });
      return supplies;
-  }, [searchedClients]);
+  }, [searchedClients, consumptions, fines, settings]);
 
   useEffect(() => {
     if (clientSearch && availableSupplies.length === 1 && availableSupplies[0].sup === clientSearch.trim()) {
@@ -961,7 +984,7 @@ export default function Finanzas() {
           <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
             <div className="fixed inset-0 bg-slate-900 bg-opacity-75 transition-opacity" onClick={closeModal}></div>
             <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-            <div className={`relative z-10 inline-block align-bottom bg-[#0B0E14] rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:w-full ${isModalOpen === 'APTOS_CORTE' ? 'sm:max-w-4xl' : 'sm:max-w-md'}`}>
+            <div className={`relative z-10 inline-block align-bottom bg-[#0B0E14] rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:w-full ${isModalOpen === 'APTOS_CORTE' ? 'sm:max-w-4xl' : isModalOpen === 'INGRESO' ? 'sm:max-w-3xl' : 'sm:max-w-md'}`}>
               <form onSubmit={handleSubmit}>
                 <div className="bg-[#0B0E14] px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                   <h3 className="text-lg leading-6 font-medium text-slate-100 mb-4" id="modal-title">
@@ -1164,60 +1187,183 @@ export default function Finanzas() {
                       </div>
                     )}
                     {isModalOpen === 'INGRESO' && ['CONSUMO', 'MULTA', 'APORTE', 'RECONEXION'].includes(formData.categoria) && (
-                        <div>
-                          <label className="block text-sm font-medium text-slate-300">Buscar Cliente (Suministro, DNI o Nombre)</label>
-                          <div className="relative mt-1 flex gap-2">
-                            <div className="relative w-full">
-                              <input 
-                                ref={searchInputRef}
-                                type="text" 
-                                placeholder="Ingrese términos de búsqueda por suministro o cliente..."
-                                value={clientSearch}
-                                onChange={(e) => {
-                                  setClientSearch(e.target.value);
-                                  setShowSuministroDropdown(true);
-                                  if (selectedClientId) {
-                                    setSelectedClientId('');
-                                    setSelectedSupplyCode('');
-                                  }
+                      <div className="space-y-4">
+                        {selectedSupplyCode ? (
+                          /* Highlighted Selected Supply Card */
+                          <div className="bg-gradient-to-br from-[#121824] to-[#0D111A] p-4 rounded-xl border border-blue-500/30 shadow-lg relative overflow-hidden mb-2">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
+                            
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="space-y-3 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-extrabold text-blue-400 bg-blue-950/60 border border-blue-500/40 px-2.5 py-1 rounded text-xs tracking-wider">
+                                    SUMINISTRO: {selectedSupplyCode}
+                                  </span>
+                                  <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-extrabold tracking-wider uppercase ${
+                                    selectedClientObj?.tipo === 'SOCIO' ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-800/50' : 'bg-blue-950/50 text-blue-400 border border-blue-800/50'
+                                  }`}>
+                                    {selectedClientObj?.tipo}
+                                  </span>
+                                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold tracking-wider uppercase ${
+                                    selectedClientObj?.estado === 'ACTIVO' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                                  }`}>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${selectedClientObj?.estado === 'ACTIVO' ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
+                                    {selectedClientObj?.estado === 'ACTIVO' ? 'Servicio Activo' : 'Servicio Cortado'}
+                                  </span>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 text-xs text-slate-300">
+                                  <div>
+                                    <span className="text-slate-500 block mb-0.5">Titular / Cliente</span>
+                                    <span className="font-semibold text-sm text-slate-100">
+                                      {selectedClientObj?.nombre ? selectedClientObj.nombre : `${selectedClientObj?.nombres || ''} ${selectedClientObj?.apellidos || ''}`}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-slate-500 block mb-0.5">DNI / RUC</span>
+                                    <span className="font-mono text-slate-200">{selectedClientObj?.dni || '-'}</span>
+                                  </div>
+                                  <div className="sm:col-span-2 border-t border-slate-800/60 pt-2.5 mt-1">
+                                    <span className="text-slate-500 block mb-0.5">Dirección del Predio</span>
+                                    <span className="text-slate-200 font-medium">
+                                      {selectedClientObj?.direccion || '-'} {selectedClientObj?.numeroDireccion || ''}
+                                      {selectedClientObj?.referenciaDireccion && (
+                                        <span className="text-slate-400 text-[11px] block mt-0.5 font-normal">Ref: {selectedClientObj.referenciaDireccion}</span>
+                                      )}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedClientId('');
+                                  setSelectedSupplyCode('');
+                                  setClientSearch('');
                                 }}
-                                onFocus={() => setShowSuministroDropdown(true)}
-                                onBlur={() => {
-                                  setTimeout(() => setShowSuministroDropdown(false), 200);
-                                }}
-                                className="block w-full border border-slate-700 rounded-md shadow-sm py-2 px-3 focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-[#0B0E14] text-slate-100"
-                              />
-                              {showSuministroDropdown && availableSupplies.length > 0 && (
-                                <ul className="absolute z-10 mt-1 w-full bg-slate-800 border border-slate-700 rounded-md shadow-lg max-h-48 overflow-auto">
-                                  {availableSupplies.map(s => (
-                                    <li 
-                                      key={`${s.id}|${s.sup}`} 
-                                      className="px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 cursor-pointer border-b border-slate-700/50"
+                                className="bg-slate-800/80 hover:bg-slate-700 border-slate-700 text-slate-200 text-xs py-1.5 h-8 flex items-center gap-1.5"
+                              >
+                                <RefreshCw className="h-3.5 w-3.5" />
+                                Cambiar Suministro
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          /* Search Input & Wide Results Panel when no selection is active */
+                          <div>
+                            <label className="block text-sm font-medium text-slate-300 mb-1.5">Buscar Cliente o Suministro</label>
+                            <div className="relative flex gap-2">
+                              <div className="relative w-full">
+                                <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
+                                  <Search className="h-4 w-4" />
+                                </span>
+                                <input 
+                                  ref={searchInputRef}
+                                  type="text" 
+                                  placeholder="Busque por Código de Suministro, Nombre del Cliente, DNI/RUC o dirección..."
+                                  value={clientSearch}
+                                  onChange={(e) => {
+                                    setClientSearch(e.target.value);
+                                  }}
+                                  className="block w-full border border-slate-700 rounded-md shadow-sm py-2 pl-9 pr-3 focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-[#0B0E14] text-slate-100 placeholder-slate-400"
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setShowOnlyAptForCut(!showOnlyAptForCut)}
+                                className={`flex px-3 py-2 text-sm font-medium rounded-md border items-center gap-2 transition-colors flex-shrink-0 ${showOnlyAptForCut ? 'bg-red-900/50 text-red-500 border-red-500/50' : 'bg-[#0B0E14] text-slate-400 border-slate-700 hover:text-slate-200'}`}
+                                title="Filtrar clientes con riesgo de corte"
+                              >
+                                <FileWarning className="h-4 w-4" />
+                                <span className="hidden sm:inline">Aptos para corte</span>
+                              </button>
+                            </div>
+
+                            {/* Wide visual search results table-like container */}
+                            <div className="mt-3 space-y-2 max-h-80 overflow-y-auto pr-1 border border-slate-800 rounded-lg p-2 bg-[#090C11]">
+                              <div className="text-xs font-semibold text-slate-400 px-2 pb-1.5 border-b border-slate-800/80 flex justify-between items-center">
+                                <span>Resultados Encontrados ({availableSupplies.length})</span>
+                                <span className="text-slate-500 text-[10px]">Haga clic en un suministro para seleccionarlo</span>
+                              </div>
+                              {availableSupplies.length > 0 ? (
+                                availableSupplies.slice(0, 30).map(s => {
+                                  const clientName = s.client.nombre ? s.client.nombre : `${s.client.nombres || ''} ${s.client.apellidos || ''}`;
+                                  return (
+                                    <div 
+                                      key={`${s.id}|${s.sup}`}
                                       onClick={() => {
                                         setSelectedClientId(s.id);
                                         setSelectedSupplyCode(s.sup);
                                         setClientSearch(s.label);
-                                        setShowSuministroDropdown(false);
                                       }}
+                                      className="p-3 rounded-lg border text-xs transition-all cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-3 bg-[#0B0E14] border-slate-800 hover:border-slate-700 hover:bg-slate-800/40"
                                     >
-                                      <div className="font-medium text-purple-300 mb-0.5">{s.label}</div>
-                                      <div className="text-xs text-slate-400">{s.desc}</div>
-                                    </li>
-                                  ))}
-                                </ul>
+                                      <div className="flex-1 min-w-0 space-y-1">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className="font-bold text-blue-400 bg-blue-950/50 border border-blue-800/50 px-2 py-0.5 rounded text-[10px] uppercase tracking-wider">
+                                            {s.sup}
+                                          </span>
+                                          <span className="font-semibold text-slate-100 text-sm truncate">
+                                            {clientName}
+                                          </span>
+                                          <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase ${
+                                            s.client.tipo === 'SOCIO' ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-800/50' : 'bg-blue-950/40 text-blue-400 border border-blue-800/50'
+                                          }`}>
+                                            {s.client.tipo}
+                                          </span>
+                                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase ${
+                                            s.client.estado === 'ACTIVO' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+                                          }`}>
+                                            <span className={`w-1 h-1 rounded-full ${s.client.estado === 'ACTIVO' ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                                            {s.client.estado}
+                                          </span>
+                                        </div>
+                                        
+                                        <div className="flex flex-col sm:flex-row sm:items-center gap-x-4 text-slate-400 text-[11px] mt-1">
+                                          <div className="flex items-center gap-1">
+                                            <span className="text-slate-500">DNI/RUC:</span>
+                                            <span className="font-mono text-slate-300">{s.client.dni || '-'}</span>
+                                          </div>
+                                          <div className="flex items-center gap-1 truncate max-w-xs md:max-w-md">
+                                            <span className="text-slate-500">Dirección:</span>
+                                            <span className="text-slate-300 truncate" title={s.client.direccion}>
+                                              {s.client.direccion || '-'} {s.client.numeroDireccion || ''}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center justify-between md:justify-end gap-4 border-t md:border-t-0 pt-2 md:pt-0 border-slate-800/50">
+                                        <div className="text-right">
+                                          <div className="text-[9px] text-slate-500 uppercase font-medium">Saldo Pendiente</div>
+                                          <div className={`text-xs font-bold ${s.pendingBalance > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                                            {s.pendingBalance > 0 ? formatCurrency(s.pendingBalance) : 'Sin deuda'}
+                                          </div>
+                                        </div>
+                                        <Button 
+                                          type="button" 
+                                          size="sm" 
+                                          variant={s.pendingBalance > 0 ? 'default' : 'outline'}
+                                          className="h-8 py-1 px-3 text-xs font-bold"
+                                        >
+                                          Seleccionar
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              ) : (
+                                <div className="p-6 text-center text-slate-400 text-sm">
+                                  No se encontraron suministros que coincidan con la búsqueda.
+                                </div>
                               )}
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => setShowOnlyAptForCut(!showOnlyAptForCut)}
-                              className={`flex px-3 py-2 text-sm font-medium rounded-md border items-center gap-2 transition-colors flex-shrink-0 ${showOnlyAptForCut ? 'bg-red-900/50 text-red-500 border-red-500/50' : 'bg-[#0B0E14] text-slate-400 border-slate-700 hover:text-slate-200'}`}
-                              title="Filtrar clientes con riesgo de corte"
-                            >
-                              <FileWarning className="h-4 w-4" />
-                              <span className="hidden sm:inline">Aptos para corte</span>
-                            </button>
                           </div>
-                        </div>
+                        )}
+                      </div>
                     )}
                     
                     {['CONSUMO', 'MULTA'].includes(formData.categoria) && isModalOpen === 'INGRESO' ? (
