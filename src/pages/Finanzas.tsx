@@ -744,8 +744,60 @@ export default function Finanzas() {
            });
         });
      });
+
+     if (clientSearch) {
+       const searchLower = normalizeSearchText(clientSearch);
+       supplies.sort((a, b) => {
+         // Calculate relevance score for 'a'
+         let scoreA = 0;
+         const supA = normalizeSearchText(a.sup);
+         const dniA = normalizeSearchText(a.client.dni || '');
+         const rawNameA = a.client.nombre ? a.client.nombre : `${a.client.nombres || ''} ${a.client.apellidos || ''}`;
+         const nameA = normalizeSearchText(rawNameA);
+         const addrA = normalizeSearchText(a.client.direccion || '');
+
+         if (supA === searchLower) scoreA += 1000;
+         else if (supA.startsWith(searchLower)) scoreA += 500;
+         else if (supA.includes(searchLower)) scoreA += 100;
+
+         if (dniA === searchLower) scoreA += 800;
+         else if (dniA.startsWith(searchLower)) scoreA += 400;
+         else if (dniA.includes(searchLower)) scoreA += 80;
+
+         if (nameA === searchLower) scoreA += 600;
+         else if (nameA.startsWith(searchLower)) scoreA += 300;
+         else if (nameA.includes(searchLower)) scoreA += 60;
+
+         if (addrA.includes(searchLower)) scoreA += 20;
+
+         // Calculate relevance score for 'b'
+         let scoreB = 0;
+         const supB = normalizeSearchText(b.sup);
+         const dniB = normalizeSearchText(b.client.dni || '');
+         const rawNameB = b.client.nombre ? b.client.nombre : `${b.client.nombres || ''} ${b.client.apellidos || ''}`;
+         const nameB = normalizeSearchText(rawNameB);
+         const addrB = normalizeSearchText(b.client.direccion || '');
+
+         if (supB === searchLower) scoreB += 1000;
+         else if (supB.startsWith(searchLower)) scoreB += 500;
+         else if (supB.includes(searchLower)) scoreB += 100;
+
+         if (dniB === searchLower) scoreB += 800;
+         else if (dniB.startsWith(searchLower)) scoreB += 400;
+         else if (dniB.includes(searchLower)) scoreB += 80;
+
+         if (nameB === searchLower) scoreB += 600;
+         else if (nameB.startsWith(searchLower)) scoreB += 300;
+         else if (nameB.includes(searchLower)) scoreB += 60;
+
+         if (addrB.includes(searchLower)) scoreB += 20;
+
+         return scoreB - scoreA;
+       });
+     }
+
      return supplies;
-  }, [searchedClients, consumptions, fines, settings]);
+  }, [searchedClients, consumptions, fines, settings, clientSearch]);
 
   useEffect(() => {
     if (clientSearch && availableSupplies.length === 1 && availableSupplies[0].sup === clientSearch.trim()) {
