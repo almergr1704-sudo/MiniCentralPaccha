@@ -89,6 +89,10 @@ export default function Finanzas() {
     observaciones: ''
   });
 
+  const [workerSearchDni, setWorkerSearchDni] = useState('');
+  const [workerSearchName, setWorkerSearchName] = useState('');
+  const [workerSortBy, setWorkerSortBy] = useState<'nombre' | 'dni'>('nombre');
+
   const closeModal = () => {
     setIsModalOpen(false);
     setShowOnlyAptForCut(false);
@@ -99,6 +103,9 @@ export default function Finanzas() {
     setSearchSupplyCode('');
     setSearchDniRuc('');
     setSearchName('');
+    setWorkerSearchDni('');
+    setWorkerSearchName('');
+    setWorkerSortBy('nombre');
     setSueldoForm({
       trabajadorId: '',
       trabajadorNombreCompleto: '',
@@ -1755,138 +1762,326 @@ export default function Finanzas() {
         </div>
       )}
 
-      {isModalOpen === 'PAGO_SUELDO' && (
-        <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-          <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 bg-[#07090E] bg-opacity-80 transition-opacity" aria-hidden="true" onClick={closeModal}></div>
+      {isModalOpen === 'PAGO_SUELDO' && (() => {
+        // Filter and sort trabalhadores list dynamically based on real-time filters
+        const filteredTrabajadores = (trabajadores || []).filter((t: any) => {
+          if (!t) return false;
+          const matchesDni = workerSearchDni ? (t.dni || '').toLowerCase().includes(workerSearchDni.toLowerCase()) : true;
+          const fullName = `${t.apellidos || ''} ${t.nombres || ''}`.toLowerCase();
+          const matchesName = workerSearchName ? normalizeSearchText(fullName).includes(normalizeSearchText(workerSearchName)) : true;
+          return matchesDni && matchesName;
+        });
 
-            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+        // Automatic ascending sorting
+        const sortedTrabajadores = [...filteredTrabajadores].sort((a: any, b: any) => {
+          if (workerSortBy === 'dni') {
+            return (a.dni || '').localeCompare(b.dni || '');
+          } else {
+            const nameA = `${a.apellidos || ''}, ${a.nombres || ''}`.toLowerCase();
+            const nameB = `${b.apellidos || ''}, ${b.nombres || ''}`.toLowerCase();
+            return nameA.localeCompare(nameB);
+          }
+        });
 
-            <div className="relative z-10 inline-block align-bottom bg-[#111622] rounded-xl border border-slate-800 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-              <form onSubmit={handleSueldoSubmit}>
-                <div className="p-6 space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                    <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                      <Briefcase className="h-5 w-5 text-blue-500" />
-                      Registrar Pago de Sueldo
-                    </h3>
-                    <span className="text-[10px] text-slate-500">Módulo de Planillas</span>
-                  </div>
+        const getAreaForCargo = (cargo: string) => {
+          const c = (cargo || '').toLowerCase();
+          if (c.includes('admin') || c.includes('secretar') || c.includes('tesorer') || c.includes('contad') || c.includes('oficina') || c.includes('presidente') || c.includes('vocal')) {
+            return 'Administración';
+          }
+          return 'Operaciones / Planta';
+        };
 
-                  {/* Worker Select */}
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300">Seleccionar Trabajador de Planta <span className="text-red-500">*</span></label>
-                    <select
-                      required
-                      className="mt-1 block w-full py-2 px-3 border border-slate-800 bg-[#0C101A] rounded-lg text-xs text-slate-100 outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                      value={sueldoForm.trabajadorId}
-                      onChange={(e) => {
-                        const tId = e.target.value;
-                        const t = trabajadores.find((item: any) => item.id === tId);
-                        if (t) {
-                          setSueldoForm({
-                            ...sueldoForm,
-                            trabajadorId: tId,
-                            trabajadorNombreCompleto: `${t.apellidos}, ${t.nombres}`,
-                            trabajadorDni: t.dni,
-                            trabajadorCargo: t.cargo,
-                            monto: t.sueldoMensual
-                          });
-                        } else {
-                          setSueldoForm({
-                            ...sueldoForm,
-                            trabajadorId: '',
-                            trabajadorNombreCompleto: '',
-                            trabajadorDni: '',
-                            trabajadorCargo: '',
-                            monto: 0
-                          });
-                        }
-                      }}
-                    >
-                      <option value="">-- Seleccionar Trabajador Activo --</option>
-                      {(trabajadores || []).filter((t: any) => t && t.estado === 'ACTIVO').map((t: any) => (
-                        <option key={t.id} value={t.id}>
-                          {t.apellidos || ''}, {t.nombres || ''} - {t.cargo || ''} (S/ {Number(t.sueldoMensual || 0).toFixed(2)})
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-[10px] text-slate-500 mt-1">Solo se enumeran los trabajadores con estado Activo.</p>
-                  </div>
+        const getUltimoPago = (trabajadorId: string) => {
+          const list = (pagosSueldos || []).filter((p: any) => p && p.trabajadorId === trabajadorId);
+          if (list.length === 0) return 'Ninguno';
+          const sorted = [...list].sort((a: any, b: any) => b.mesPagado.localeCompare(a.mesPagado));
+          const [year, month] = sorted[0].mesPagado.split('-');
+          const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Set', 'Oct', 'Nov', 'Dic'];
+          const mIndex = parseInt(month, 10) - 1;
+          const mName = monthNames[mIndex] || month;
+          return `${mName} ${year}`;
+        };
 
-                  {sueldoForm.trabajadorId && (
-                    <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800 grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <span className="text-slate-500 block">DNI</span>
-                        <span className="text-slate-200 font-semibold">{sueldoForm.trabajadorDni}</span>
+        const getEstadoPago = (trabajadorId: string) => {
+          const isPaid = (pagosSueldos || []).some(
+            (p: any) => p && p.trabajadorId === trabajadorId && p.mesPagado === sueldoForm.mesPagado
+          );
+          return isPaid ? 'Pagado' : 'Pendiente';
+        };
+
+        return (
+          <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+            <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+              <div className="fixed inset-0 bg-[#07090E] bg-opacity-80 transition-opacity" aria-hidden="true" onClick={closeModal}></div>
+
+              <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+              <div className="relative z-10 inline-block align-bottom bg-[#111622] rounded-xl border border-slate-800 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-5xl sm:w-full">
+                <form onSubmit={handleSueldoSubmit}>
+                  <div className="p-6 space-y-6">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                      <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                        <Briefcase className="h-5 w-5 text-blue-500" />
+                        Registrar Pago de Sueldo
+                      </h3>
+                      <span className="text-[10px] text-slate-500">Módulo de Planillas</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                      {/* Sección Izquierda: Búsqueda y Selección */}
+                      <div className="lg:col-span-7 space-y-4 lg:border-r lg:border-slate-800/60 lg:pr-6">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                            <Search className="w-3.5 h-3.5 text-blue-500" /> 1. Localizar Trabajador
+                          </h4>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            {sortedTrabajadores.length} trabajadores filtrados
+                          </span>
+                        </div>
+
+                        {/* Panel de filtros avanzados */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#0A0D15]/60 p-3 rounded-lg border border-slate-800/80">
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                              Nombres y Apellidos
+                            </label>
+                            <div className="relative">
+                              <span className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                                <User className="h-3.5 w-3.5 text-slate-500" />
+                              </span>
+                              <input
+                                type="text"
+                                className="block w-full pl-8 pr-2 py-1.5 bg-[#07090E] border border-slate-800 rounded text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Buscar por nombres..."
+                                value={workerSearchName}
+                                onChange={(e) => setWorkerSearchName(e.target.value)}
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                              Número de DNI
+                            </label>
+                            <div className="relative">
+                              <span className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                                <CreditCard className="h-3.5 w-3.5 text-slate-500" />
+                              </span>
+                              <input
+                                type="text"
+                                className="block w-full pl-8 pr-2 py-1.5 bg-[#07090E] border border-slate-800 rounded text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Buscar por DNI..."
+                                value={workerSearchDni}
+                                onChange={(e) => setWorkerSearchDni(e.target.value)}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Opciones de ordenamiento */}
+                        <div className="flex items-center justify-between text-xs text-slate-400 bg-slate-900/30 px-3 py-1.5 rounded-lg border border-slate-800/40">
+                          <span className="text-[11px]">Ordenamiento ascendente:</span>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setWorkerSortBy('nombre')}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all ${
+                                workerSortBy === 'nombre'
+                                  ? 'bg-blue-600/10 text-blue-400 border-blue-500/30'
+                                  : 'bg-transparent text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'
+                              }`}
+                            >
+                              Apellidos y Nombres (A–Z)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setWorkerSortBy('dni')}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all ${
+                                workerSortBy === 'dni'
+                                  ? 'bg-blue-600/10 text-blue-400 border-blue-500/30'
+                                  : 'bg-transparent text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'
+                              }`}
+                            >
+                              DNI (Menor a Mayor)
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Tabla de Resultados */}
+                        <div className="border border-slate-800 rounded-lg overflow-hidden bg-[#0A0D15]/30">
+                          <div className="overflow-x-auto max-h-[260px] overflow-y-auto scrollbar-thin">
+                            <table className="w-full table-fixed min-w-[650px] divide-y divide-slate-800 text-left text-xs text-slate-300">
+                              <thead className="bg-[#0B0F19] text-slate-400 uppercase font-bold text-[9px] tracking-wider sticky top-0 z-10 border-b border-slate-800">
+                                <tr>
+                                  <th scope="col" className="px-3 py-2 w-[15%] bg-[#0B0F19]">DNI</th>
+                                  <th scope="col" className="px-3 py-2 w-[30%] bg-[#0B0F19]">Apellidos y Nombres</th>
+                                  <th scope="col" className="px-3 py-2 w-[20%] bg-[#0B0F19]">Cargo / Puesto</th>
+                                  <th scope="col" className="px-3 py-2 w-[15%] bg-[#0B0F19]">Área / Dependencia</th>
+                                  <th scope="col" className="px-3 py-2 w-[12%] text-center bg-[#0B0F19]">Estado</th>
+                                  <th scope="col" className="px-3 py-2 w-[15%] bg-[#0B0F19]">Último Pago</th>
+                                  <th scope="col" className="px-3 py-2 w-[15%] text-center bg-[#0B0F19]">Estado Pago</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-800/40 bg-[#0B0E14]/40">
+                                {sortedTrabajadores.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={7} className="px-4 py-8 text-center text-slate-500 text-xs">
+                                      No se encontraron trabajadores con los filtros especificados.
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  sortedTrabajadores.map((t: any) => {
+                                    const isSelected = sueldoForm.trabajadorId === t.id;
+                                    const area = getAreaForCargo(t.cargo);
+                                    const ultimoPago = getUltimoPago(t.id);
+                                    const estadoPago = getEstadoPago(t.id);
+                                    const isInactive = t.estado === 'INACTIVO';
+
+                                    return (
+                                      <tr
+                                        key={t.id}
+                                        onClick={() => {
+                                          setSueldoForm({
+                                            ...sueldoForm,
+                                            trabajadorId: t.id,
+                                            trabajadorNombreCompleto: `${t.apellidos}, ${t.nombres}`,
+                                            trabajadorDni: t.dni,
+                                            trabajadorCargo: t.cargo,
+                                            monto: t.sueldoMensual
+                                          });
+                                        }}
+                                        className={`group cursor-pointer transition-colors duration-150 ${
+                                          isSelected
+                                            ? 'bg-blue-600/10 hover:bg-blue-600/15 border-l-2 border-blue-500'
+                                            : 'hover:bg-slate-800/35'
+                                        }`}
+                                      >
+                                        <td className={`px-3 py-2 font-mono font-medium ${isSelected ? 'text-blue-400' : 'text-slate-300'}`}>
+                                          {t.dni}
+                                        </td>
+                                        <td className="px-3 py-2 font-semibold text-slate-100 whitespace-normal break-words">
+                                          {t.apellidos}, {t.nombres}
+                                        </td>
+                                        <td className="px-3 py-2 text-slate-300 whitespace-normal break-words">
+                                          {t.cargo || '-'}
+                                        </td>
+                                        <td className="px-3 py-2 text-slate-450 text-[11px] whitespace-normal">
+                                          {area}
+                                        </td>
+                                        <td className="px-3 py-2 text-center">
+                                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                            t.estado === 'ACTIVO' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+                                          }`}>
+                                            <span className={`w-1 h-1 rounded-full ${t.estado === 'ACTIVO' ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
+                                            {t.estado}
+                                          </span>
+                                        </td>
+                                        <td className="px-3 py-2 text-slate-400 text-[11px] font-mono whitespace-normal">
+                                          {ultimoPago}
+                                        </td>
+                                        <td className="px-3 py-2 text-center">
+                                          <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                            estadoPago === 'Pagado'
+                                              ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-850/40'
+                                              : isInactive
+                                                ? 'bg-slate-900 text-slate-500 border border-slate-800/40'
+                                                : 'bg-amber-950/60 text-amber-400 border border-amber-850/40'
+                                          }`}>
+                                            {estadoPago}
+                                          </span>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <span className="text-slate-500 block">Cargo</span>
-                        <span className="text-slate-200 font-semibold">{sueldoForm.trabajadorCargo}</span>
+
+                      {/* Sección Derecha: Datos de Pago */}
+                      <div className="lg:col-span-5 space-y-4">
+                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                          <Briefcase className="w-3.5 h-3.5 text-emerald-500" /> 2. Registro del Pago
+                        </h4>
+
+                        {sueldoForm.trabajadorId ? (
+                          <div className="bg-blue-600/5 p-3.5 rounded-lg border border-blue-500/20 space-y-1.5">
+                            <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider block">Trabajador Activo Seleccionado</span>
+                            <div className="text-sm font-bold text-slate-100">{sueldoForm.trabajadorNombreCompleto}</div>
+                            <div className="text-xs text-slate-400 font-mono">DNI: {sueldoForm.trabajadorDni}</div>
+                            <div className="text-xs text-slate-400">Cargo: {sueldoForm.trabajadorCargo}</div>
+                          </div>
+                        ) : (
+                          <div className="bg-slate-900/40 p-6 rounded-lg border border-dashed border-slate-850 text-center text-xs text-slate-500">
+                            Seleccione un trabajador de la lista de la izquierda para cargar automáticamente su información laboral.
+                          </div>
+                        )}
+
+                        {/* Month input selector */}
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300">Mes a Remunerar <span className="text-red-500">*</span></label>
+                          <input
+                            type="month"
+                            required
+                            className="mt-1 block w-full py-2 px-3 border border-slate-800 bg-[#0C101A] rounded-lg text-xs text-slate-100 outline-none focus:ring-1 focus:ring-blue-500"
+                            value={sueldoForm.mesPagado}
+                            onChange={(e) => setSueldoForm({ ...sueldoForm, mesPagado: e.target.value })}
+                          />
+                        </div>
+
+                        {/* Wages Amount */}
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 font-sans">Monto del Sueldo (S/)</label>
+                          <input
+                            type="number"
+                            required
+                            disabled
+                            className="mt-1 block w-full py-2 px-3 border border-slate-800 bg-slate-900 rounded-lg text-xs text-emerald-400 font-bold outline-none cursor-not-allowed"
+                            placeholder="Carga automática al seleccionar"
+                            value={sueldoForm.monto || ''}
+                          />
+                          <p className="text-[10px] text-slate-500 mt-1">El monto se carga de manera fija según las condiciones contractuales.</p>
+                        </div>
+
+                        {/* Observations */}
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300">Observaciones o Notas del Pago</label>
+                          <textarea
+                            rows={2}
+                            className="mt-1 block w-full py-2 px-3 border border-slate-800 bg-[#0C101A] rounded-lg text-xs text-slate-100 outline-none focus:ring-1 focus:ring-blue-500"
+                            placeholder="Ej. Planilla regular del mes..."
+                            value={sueldoForm.observaciones}
+                            onChange={(e) => setSueldoForm({ ...sueldoForm, observaciones: e.target.value })}
+                          />
+                        </div>
                       </div>
                     </div>
-                  )}
-
-                  {/* Month input selector */}
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300">Mes a Remunerar <span className="text-red-500">*</span></label>
-                    <input
-                      type="month"
-                      required
-                      className="mt-1 block w-full py-2 px-3 border border-slate-800 bg-[#0C101A] rounded-lg text-xs text-slate-100 outline-none focus:ring-1 focus:ring-blue-500"
-                      value={sueldoForm.mesPagado}
-                      onChange={(e) => setSueldoForm({ ...sueldoForm, mesPagado: e.target.value })}
-                    />
                   </div>
 
-                  {/* Wages Amount */}
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 font-sans">Monto del Sueldo (S/)</label>
-                    <input
-                      type="number"
-                      required
-                      disabled
-                      className="mt-1 block w-full py-2 px-3 border border-slate-800 bg-slate-900 rounded-lg text-xs text-emerald-400 font-bold outline-none cursor-not-allowed"
-                      placeholder="Carga automática"
-                      value={sueldoForm.monto || ''}
-                    />
-                    <p className="text-[10px] text-slate-500 mt-1">El monto se carga de manera fija según las condiciones contractuales.</p>
+                  <div className="bg-slate-900/60 px-6 py-3 sm:flex sm:flex-row-reverse sm:gap-2 border-t border-slate-800">
+                    <Button
+                      type="submit"
+                      className="w-full inline-flex justify-center bg-blue-600 hover:bg-blue-500 text-white sm:w-auto border-0 font-bold"
+                    >
+                      Registrar y Emitir Boleta
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={closeModal}
+                      className="mt-3 w-full sm:mt-0 sm:w-auto"
+                    >
+                      Cancelar
+                    </Button>
                   </div>
-
-                  {/* Observations */}
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300">Observaciones o Notas del Pago</label>
-                    <textarea
-                      rows={2}
-                      className="mt-1 block w-full py-2 px-3 border border-slate-800 bg-[#0C101A] rounded-lg text-xs text-slate-100 outline-none focus:ring-1 focus:ring-blue-500"
-                      placeholder="Ej. Planilla regular del mes..."
-                      value={sueldoForm.observaciones}
-                      onChange={(e) => setSueldoForm({ ...sueldoForm, observaciones: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div className="bg-slate-900/60 px-6 py-3 sm:flex sm:flex-row-reverse sm:gap-2 border-t border-slate-800">
-                  <Button
-                    type="submit"
-                    className="w-full inline-flex justify-center bg-blue-600 hover:bg-blue-500 text-white sm:w-auto border-0"
-                  >
-                    Registrar y Emitir Boleta
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={closeModal}
-                    className="mt-3 w-full sm:mt-0 sm:w-auto"
-                  >
-                    Cancelar
-                  </Button>
-                </div>
-              </form>
+                </form>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

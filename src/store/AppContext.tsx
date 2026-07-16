@@ -345,10 +345,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return runTransaction(db, async (txn) => {
       const docSnap = await txn.get(docRef);
-      if (!docSnap.exists()) {
-        throw new Error(`El contador fiscal / correlativo para "${counterId}" no se encuentra inicializado en el servidor. Por favor, realice la inicialización administrativa del período o contador desde el panel de Configuración.`);
+      let currentCount = 0;
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data && typeof data.currentCount === 'number') {
+          currentCount = data.currentCount;
+        }
       }
-      const nextNum = docSnap.data().currentCount + 1;
+      const nextNum = currentCount + 1;
       txn.set(docRef, { currentCount: nextNum });
       
       if (prefix === 'REC') {
