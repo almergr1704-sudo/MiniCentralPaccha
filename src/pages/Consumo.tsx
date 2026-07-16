@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Plus, Check, FileText, Download, Upload, AlertCircle, Zap, Receipt, Camera, Edit2, X, Eye } from 'lucide-react';
+import { Plus, Check, FileText, Download, Upload, AlertCircle, Zap, Receipt, Camera, Edit2, X, Eye, Filter, Search, RefreshCw, SlidersHorizontal, ChevronRight } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import { Button, Card, CardContent, Badge, Pagination } from '../components/ui';
 import { formatCurrency, normalizeSearchText, getExonerationClassification } from '../lib/utils';
@@ -132,6 +132,28 @@ export default function Consumo() {
 
   const [clientSearch, setClientSearch] = useState('');
   const [showSuministroDropdown, setShowSuministroDropdown] = useState(false);
+
+  // Advanced search filters
+  const [searchSupplyCode, setSearchSupplyCode] = useState('');
+  const [searchDniRuc, setSearchDniRuc] = useState('');
+  const [searchName, setSearchName] = useState('');
+
+  const clearFilters = () => {
+    setSearchSupplyCode('');
+    setSearchDniRuc('');
+    setSearchName('');
+    setClientSearch('');
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingConsumption(null);
+    setEvidenciaFileBase64('');
+    setClientSearch('');
+    setFormData({ clientAndSuministro: '', lecturaAnterior: '', lecturaActual: '' });
+    setJustificacion('');
+    clearFilters();
+  };
 
   const [formData, setFormData] = useState({
     clientAndSuministro: '',
@@ -911,75 +933,213 @@ export default function Consumo() {
 
   const [activeTab, setActiveTab] = useState<'LECTURAS' | 'DEUDAS'>('LECTURAS');
 
+  // Helper to dynamically sort consumption results based on the search criteria
+  const sortConsumptionsBySearch = (list: typeof consumptions, query: string) => {
+    if (!query) {
+      // Keep default sorting (newest first)
+      return [...list].sort((a,b) => new Date(b.fechaLectura).getTime() - new Date(a.fechaLectura).getTime());
+    }
+    
+    const trimmed = query.trim().toLowerCase();
+    const isDniRuc = /^\d+$/.test(trimmed) || (trimmed.replace(/\D/g, '').length > trimmed.length / 2 && trimmed.length >= 6);
+    const isSupply = trimmed.startsWith('sum') || (!trimmed.includes(' ') && /[a-z]/.test(trimmed) && /[0-9]/.test(trimmed));
+    
+    return [...list].sort((a, b) => {
+      const clientA = clients.find(cl => cl.id === a.clientId);
+      const clientB = clients.find(cl => cl.id === b.clientId);
+      
+      if (isDniRuc) {
+        const dniA = clientA?.dni || '';
+        const dniB = clientB?.dni || '';
+        return dniA.localeCompare(dniB, undefined, { numeric: true, sensitivity: 'base' });
+      } else if (isSupply) {
+        const supA = a.codigoSuministro || clientA?.codigoSuministro || '';
+        const supB = b.codigoSuministro || clientB?.codigoSuministro || '';
+        return supA.localeCompare(supB, undefined, { numeric: true, sensitivity: 'base' });
+      } else {
+        // Name / Surname / Razon Social
+        const nameA = clientA ? (clientA.nombre ? clientA.nombre : `${clientA.nombres || ''} ${clientA.apellidos || ''}`) : '';
+        const nameB = clientB ? (clientB.nombre ? clientB.nombre : `${clientB.nombres || ''} ${clientB.apellidos || ''}`) : '';
+        return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+      }
+    });
+  };
+
   // Filter consumptions by selected month
   const [tableSearch, setTableSearch] = useState('');
 
-  const filteredConsumptions = consumptions.filter(c => {
-    if (userRole === 'OPERATOR' && c.createdBy !== user?.email) return false;
-    if (c.mes !== selectedMes) return false;
-    if (!tableSearch) return true;
-    const client = clients.find(cl => cl.id === c.clientId);
-    if (!client) return false;
-    const searchNormalized = normalizeSearchText(tableSearch);
-    const rawFullName = client.nombre ? client.nombre : `${client.nombres || ''} ${client.apellidos || ''}`;
-    const fullName = normalizeSearchText(rawFullName);
-    const dni = normalizeSearchText(client.dni || '');
-    const suministro = normalizeSearchText(c.codigoSuministro || '');
+  const filteredConsumptions = React.useMemo(() => {
+    const rawList = consumptions.filter(c => {
+      if (userRole === 'OPERATOR' && c.createdBy !== user?.email) return false;
+      if (c.mes !== selectedMes) return false;
+      if (!tableSearch) return true;
+      const client = clients.find(cl => cl.id === c.clientId);
+      if (!client) return false;
+      const searchNormalized = normalizeSearchText(tableSearch);
+      const rawFullName = client.nombre ? client.nombre : `${client.nombres || ''} ${client.apellidos || ''}`;
+      const fullName = normalizeSearchText(rawFullName);
+      const dni = normalizeSearchText(client.dni || '');
+      const suministro = normalizeSearchText(c.codigoSuministro || '');
 
-    return suministro.includes(searchNormalized) ||
-           dni.includes(searchNormalized) ||
-           fullName.includes(searchNormalized);
-  });
+      return suministro.includes(searchNormalized) ||
+             dni.includes(searchNormalized) ||
+             fullName.includes(searchNormalized);
+    });
+    return sortConsumptionsBySearch(rawList, tableSearch);
+  }, [consumptions, tableSearch, selectedMes, clients, userRole, user]);
   
   // All pending debts
-  const pendingDebts = consumptions.filter(c => {
-    if (c.estadoPago !== 'PENDIENTE') return false;
-    if (!tableSearch) return true;
-    const client = clients.find(cl => cl.id === c.clientId);
-    if (!client) return false;
-    const searchNormalized = normalizeSearchText(tableSearch);
-    const rawFullName = client.nombre ? client.nombre : `${client.nombres || ''} ${client.apellidos || ''}`;
-    const fullName = normalizeSearchText(rawFullName);
-    const dni = normalizeSearchText(client.dni || '');
-    const suministro = normalizeSearchText(c.codigoSuministro || '');
-    
-    return suministro.includes(searchNormalized) ||
-           dni.includes(searchNormalized) ||
-           fullName.includes(searchNormalized);
-  }).sort((a,b) => new Date(b.fechaLectura).getTime() - new Date(a.fechaLectura).getTime());
-
-  const searchedClients = clients.filter(c => {
-    if (!clientSearch) return true;
-    const searchNormalized = normalizeSearchText(clientSearch);
-    const rawFullName = c.nombre ? c.nombre : `${c.nombres || ''} ${c.apellidos || ''}`;
-    const fullName = normalizeSearchText(rawFullName);
-    const dni = normalizeSearchText(c.dni || '');
-    const clientSupplies = c.suministros?.length ? c.suministros : [c.codigoSuministro];
-    const allSuppliesStr = normalizeSearchText(clientSupplies.join(' '));
-
-    return dni.includes(searchNormalized) || fullName.includes(searchNormalized) || allSuppliesStr.includes(searchNormalized);
-  }).filter(c => c.estado === 'ACTIVO' || c.estado === 'CORTADO');
+  const pendingDebts = React.useMemo(() => {
+    const rawList = consumptions.filter(c => {
+      if (c.estadoPago !== 'PENDIENTE') return false;
+      if (!tableSearch) return true;
+      const client = clients.find(cl => cl.id === c.clientId);
+      if (!client) return false;
+      const searchNormalized = normalizeSearchText(tableSearch);
+      const rawFullName = client.nombre ? client.nombre : `${client.nombres || ''} ${client.apellidos || ''}`;
+      const fullName = normalizeSearchText(rawFullName);
+      const dni = normalizeSearchText(client.dni || '');
+      const suministro = normalizeSearchText(c.codigoSuministro || '');
+      
+      return suministro.includes(searchNormalized) ||
+             dni.includes(searchNormalized) ||
+             fullName.includes(searchNormalized);
+    });
+    return sortConsumptionsBySearch(rawList, tableSearch);
+  }, [consumptions, tableSearch, clients]);
 
   const availableSupplies = React.useMemo(() => {
-     let supplies: { id: string, sup: string, label: string, desc: string }[] = [];
-     searchedClients.forEach(c => {
-        const clientSupplies = c.suministros?.length ? c.suministros : [c.codigoSuministro];
-        clientSupplies.forEach(sup => {
-           if (!sup) return;
-           supplies.push({
-              id: c.id,
-              sup: sup,
-              label: `${sup} - ${c.nombre ? c.nombre : `${c.nombres || ''} ${c.apellidos || ''}`}`,
-              desc: `DNI/RUC: ${c.dni} | Direcc: ${c.direccion || '-'} | Tipo: ${c.tipo} | Est: ${c.estado}`
-           });
+    let supplies: {
+      id: string;
+      sup: string;
+      label: string;
+      desc: string;
+      client: any;
+      lecturaAnterior: number;
+      fechaUltimaLectura: string | null;
+      readingStatus: 'PENDIENTE' | 'REGISTRADA' | 'VALIDADA';
+      hasPeriodReading: boolean;
+      periodReadingId: string | null;
+    }[] = [];
+
+    const filteredClients = clients.filter(c => c.estado === 'ACTIVO' || c.estado === 'CORTADO');
+
+    filteredClients.forEach(c => {
+      const clientSupplies = c.suministros?.length ? c.suministros : [c.codigoSuministro];
+      clientSupplies.forEach(sup => {
+        if (!sup) return;
+
+        const rawFullName = c.nombre ? c.nombre : `${c.nombres || ''} ${c.apellidos || ''}`;
+        const fullName = rawFullName;
+
+        // Apply filters
+        if (searchSupplyCode) {
+          const normalizedSup = normalizeSearchText(sup);
+          const normalizedQuery = normalizeSearchText(searchSupplyCode);
+          if (!normalizedSup.includes(normalizedQuery)) return;
+        }
+
+        if (searchDniRuc) {
+          const normalizedDni = normalizeSearchText(c.dni || '');
+          const normalizedQuery = normalizeSearchText(searchDniRuc);
+          if (!normalizedDni.includes(normalizedQuery)) return;
+        }
+
+        if (searchName) {
+          const normalizedName = normalizeSearchText(fullName);
+          const normalizedQuery = normalizeSearchText(searchName);
+          if (!normalizedName.includes(normalizedQuery)) return;
+        }
+
+        if (clientSearch && !formData.clientAndSuministro) {
+          const normalizedGeneral = normalizeSearchText(clientSearch);
+          const normalizedSup = normalizeSearchText(sup);
+          const normalizedDni = normalizeSearchText(c.dni || '');
+          const normalizedName = normalizeSearchText(fullName);
+          const normalizedDir = normalizeSearchText(c.direccion || '');
+
+          const match = normalizedSup.includes(normalizedGeneral) ||
+                        normalizedDni.includes(normalizedGeneral) ||
+                        normalizedName.includes(normalizedGeneral) ||
+                        normalizedDir.includes(normalizedGeneral);
+          if (!match) return;
+        }
+
+        // Get consumption history for stats
+        const sConsumptions = consumptions.filter(cons => cons.clientId === c.id && cons.codigoSuministro === sup);
+        const priorSConsumptions = sConsumptions
+          .filter(cons => cons.mes < selectedMes)
+          .sort((a, b) => a.mes.localeCompare(b.mes));
+        const lastPriorReading = priorSConsumptions.length > 0 ? priorSConsumptions[priorSConsumptions.length - 1] : undefined;
+
+        const lecturaAnteriorVal = lastPriorReading ? (lastPriorReading.lecturaActual ?? 0) : 0;
+        const fechaUltimaLectura = lastPriorReading ? lastPriorReading.fechaLectura : null;
+
+        // Current period status
+        const periodReading = sConsumptions.find(cons => cons.mes === selectedMes);
+        let readingStatus: 'PENDIENTE' | 'REGISTRADA' | 'VALIDADA' = 'PENDIENTE';
+        if (periodReading) {
+          readingStatus = periodReading.estadoPago === 'PAGADO' ? 'VALIDADA' : 'REGISTRADA';
+        }
+
+        supplies.push({
+          id: c.id,
+          sup: sup,
+          label: `${sup} - ${fullName}`,
+          desc: `DNI/RUC: ${c.dni} | Direcc: ${c.direccion || '-'} | Tipo: ${c.tipo} | Est: ${c.estado}`,
+          client: c,
+          lecturaAnterior: lecturaAnteriorVal,
+          fechaUltimaLectura: fechaUltimaLectura,
+          readingStatus: readingStatus,
+          hasPeriodReading: !!periodReading,
+          periodReadingId: periodReading?.id || null
         });
-     });
-     return supplies;
-  }, [searchedClients]);
+      });
+    });
+
+    // Sort results based on the search query used
+    let activeSortType: 'SUPPLY' | 'DNI' | 'NAME' = 'SUPPLY'; // default is correlative by supply code
+
+    if (searchSupplyCode) {
+      activeSortType = 'SUPPLY';
+    } else if (searchDniRuc) {
+      activeSortType = 'DNI';
+    } else if (searchName) {
+      activeSortType = 'NAME';
+    } else if (clientSearch) {
+      const trimmed = clientSearch.trim().toLowerCase();
+      const isDni = /^\d+$/.test(trimmed) || (trimmed.replace(/\D/g, '').length > trimmed.length / 2 && trimmed.length >= 6);
+      const isSup = trimmed.startsWith('sum') || (!trimmed.includes(' ') && /[a-z]/.test(trimmed) && /[0-9]/.test(trimmed));
+      if (isDni) {
+        activeSortType = 'DNI';
+      } else if (isSup) {
+        activeSortType = 'SUPPLY';
+      } else {
+        activeSortType = 'NAME';
+      }
+    }
+
+    supplies.sort((a, b) => {
+      if (activeSortType === 'DNI') {
+        const dniA = a.client.dni || '';
+        const dniB = b.client.dni || '';
+        return dniA.localeCompare(dniB, undefined, { numeric: true, sensitivity: 'base' });
+      } else if (activeSortType === 'NAME') {
+        const nameA = a.client.nombre ? a.client.nombre : `${a.client.nombres || ''} ${a.client.apellidos || ''}`;
+        const nameB = b.client.nombre ? b.client.nombre : `${b.client.nombres || ''} ${b.client.apellidos || ''}`;
+        return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+      } else {
+        // SUPPLY (correlative ascending order)
+        return a.sup.localeCompare(b.sup, undefined, { numeric: true, sensitivity: 'base' });
+      }
+    });
+
+    return supplies;
+  }, [clients, consumptions, searchSupplyCode, searchDniRuc, searchName, clientSearch, selectedMes, formData.clientAndSuministro]);
 
   useEffect(() => {
     if (clientSearch && availableSupplies.length === 1 && availableSupplies[0].sup === clientSearch.trim()) {
-       setFormData(prev => ({ ...prev, clientAndSuministro: `${availableSupplies[0].id}|${availableSupplies[0].sup}` }));
+       setFormData(prev => ({ ...prev, clientAndSuministro: `${availableSupplies[0].id}|${availableSupplies[0].sup}`, lecturaAnterior: availableSupplies[0].lecturaAnterior.toString() }));
        setShowSuministroDropdown(false);
     }
   }, [clientSearch, availableSupplies]);
@@ -1149,16 +1309,16 @@ export default function Consumo() {
             disableTopBorder={true}
           />
 
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-800">
-              <thead className="bg-slate-800/50">
-                <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Cliente</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Consumo</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Monto Calculado</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Observación</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Estado</th>
-                  <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">Acciones</th>
+          <div className="overflow-x-auto max-h-[600px] overflow-y-auto relative rounded-lg border border-slate-800 bg-[#0B0E14] scrollbar-thin">
+            <table className="w-full table-fixed min-w-[900px] md:min-w-full divide-y divide-slate-800">
+              <thead>
+                <tr className="bg-slate-900 border-b border-slate-800">
+                  <th scope="col" className="sticky top-0 z-10 bg-slate-900 px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[24%] min-w-[180px]">Cliente</th>
+                  <th scope="col" className="sticky top-0 z-10 bg-slate-900 px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[15%] min-w-[120px]">Consumo</th>
+                  <th scope="col" className="sticky top-0 z-10 bg-slate-900 px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[13%] min-w-[110px]">Monto Calculado</th>
+                  <th scope="col" className="sticky top-0 z-10 bg-slate-900 px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[14%] min-w-[110px]">Observación</th>
+                  <th scope="col" className="sticky top-0 z-10 bg-slate-900 px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[10%] min-w-[80px]">Estado</th>
+                  <th scope="col" className="sticky top-0 z-10 bg-slate-900 px-4 py-3 text-right text-xs font-bold text-slate-300 uppercase tracking-wider w-[24%] min-w-[180px]">Acciones</th>
                 </tr>
               </thead>
               <tbody className="bg-[#0B0E14] divide-y divide-slate-800">
@@ -1167,16 +1327,16 @@ export default function Consumo() {
                   const clientName = client?.nombre ? client.nombre : `${client?.nombres || ''} ${client?.apellidos || ''}`;
                   return (
                     <tr key={cons.id} className="hover:bg-slate-800/50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-slate-100">{clientName}</div>
-                        <div className="text-xs text-slate-400">{cons.codigoSuministro || client?.codigoSuministro} • {client?.tipo}</div>
+                      <td className="px-4 py-3 whitespace-normal break-words align-middle">
+                        <div className="text-sm font-semibold text-slate-100">{clientName}</div>
+                        <div className="text-xs text-slate-400 mt-0.5">{cons.codigoSuministro || client?.codigoSuministro} • {client?.tipo}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 py-3 whitespace-normal break-words align-middle">
                         <div className="text-sm text-slate-100 font-semibold">{cons.kwh} kWh</div>
-                        <div className="text-xs text-amber-400 font-mono font-semibold">
+                        <div className="text-xs text-amber-400 font-mono font-semibold mt-0.5">
                           {cons.reciboNo || `REC-${cons.mes.split('-')[0]}-${cons.mes.split('-')[1]}-${cons.id.slice(-4).toUpperCase()}`}
                         </div>
-                        <div className="text-[11px] text-slate-400">
+                        <div className="text-[11px] text-slate-400 mt-0.5">
                           {cons.mes} • {format(parseISO(cons.fechaLectura), 'dd MMM yyyy', { locale: es })}
                         </div>
                         {cons.evidenciaFoto && (
@@ -1189,9 +1349,9 @@ export default function Consumo() {
                           </button>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 py-3 whitespace-normal break-words align-middle">
                         <div className="text-sm font-bold text-slate-100">{formatCurrency(cons.montoCalculado)}</div>
-                        <div className="text-xs text-slate-400">Tarifa: S/ {
+                        <div className="text-xs text-slate-400 mt-0.5">Tarifa: S/ {
                             (() => {
                                const isSocio = suppliesInfo?.find(s => s.codigo === cons.codigoSuministro)?.isSocio ?? (client?.tipo === 'SOCIO');
                                return client?.faseSuministro === 'TRIFASICO' && settings.costoTrifasico > 0 ? settings.costoTrifasico.toFixed(2) : 
@@ -1199,45 +1359,47 @@ export default function Consumo() {
                             })()
                           }/kWh</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-xs text-slate-400 max-w-[150px] truncate" title={cons.observacion || ''}>{cons.observacion || '-'}</div>
+                      <td className="px-4 py-3 whitespace-normal break-words align-middle">
+                        <div className="text-xs text-slate-400" title={cons.observacion || ''}>{cons.observacion || '-'}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 py-3 whitespace-nowrap align-middle">
                         <Badge variant={cons.estadoPago === 'PAGADO' ? 'success' : 'warning'}>
                           {cons.estadoPago}
                         </Badge>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2 flex items-center justify-end">
-                        {userRole !== 'OPERATOR' && cons.estadoPago === 'PENDIENTE' && (
-                          <Button size="sm" variant="ghost" className="text-red-500 hover:bg-red-500/10 hover:text-red-400 mr-2" onClick={() => handleAnularRecibo(cons)}>
-                            Anular
-                          </Button>
-                        )}
-                        {cons.estadoPago === 'PENDIENTE' && (
-                          <Button size="sm" variant="ghost" className="text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 mr-1" onClick={() => handleEditClick(cons)}>
-                            <Edit2 className="h-3.5 w-3.5 mr-1" /> Editar
-                          </Button>
-                        )}
-                        {userRole !== 'OPERATOR' && (
-                          <>
-                            <Button size="sm" variant="ghost" className="hover:text-amber-400 text-amber-500/95" onClick={() => navigate(`/consumo?tab=recibos&supplyCode=${cons.codigoSuministro || client?.codigoSuministro}`)}>
-                              Buscador
+                      <td className="px-4 py-3 text-right whitespace-normal align-middle">
+                        <div className="flex flex-wrap gap-1 justify-end items-center">
+                          {userRole !== 'OPERATOR' && cons.estadoPago === 'PENDIENTE' && (
+                            <Button size="sm" variant="ghost" className="text-red-500 hover:bg-red-500/10 hover:text-red-400 px-2 py-1 h-auto text-xs" onClick={() => handleAnularRecibo(cons)}>
+                              Anular
                             </Button>
-                            <Button size="sm" variant="ghost" className="text-blue-600" onClick={() => handleGenerateReceipt(cons)}>
-                              <Download className="h-4 w-4 mr-1" /> Imprimir Recibo
+                          )}
+                          {cons.estadoPago === 'PENDIENTE' && (
+                            <Button size="sm" variant="ghost" className="text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 px-2 py-1 h-auto text-xs" onClick={() => handleEditClick(cons)}>
+                              <Edit2 className="h-3 w-3 mr-1" /> Editar
                             </Button>
-                          </>
-                        )}
-                        <Button size="sm" variant="outline" className="ml-2 border-slate-700 text-slate-300" 
-                          onClick={() => setHistoryClientSuministro({ clientId: cons.clientId, codigoSuministro: cons.codigoSuministro || (client?.codigoSuministro || ''), clientName })}>
-                          Ver Historial
-                        </Button>
+                          )}
+                          {userRole !== 'OPERATOR' && (
+                            <>
+                              <Button size="sm" variant="ghost" className="hover:text-amber-400 text-amber-500/95 px-2 py-1 h-auto text-xs" onClick={() => navigate(`/consumo?tab=recibos&supplyCode=${cons.codigoSuministro || client?.codigoSuministro}`)}>
+                                Buscador
+                              </Button>
+                              <Button size="sm" variant="ghost" className="text-blue-600 px-2 py-1 h-auto text-xs" onClick={() => handleGenerateReceipt(cons)}>
+                                <Download className="h-3 w-3 mr-1" /> Imprimir Recibo
+                              </Button>
+                            </>
+                          )}
+                          <Button size="sm" variant="outline" className="border-slate-700 text-slate-300 px-2 py-1 h-auto text-xs" 
+                            onClick={() => setHistoryClientSuministro({ clientId: cons.clientId, codigoSuministro: cons.codigoSuministro || (client?.codigoSuministro || ''), clientName })}>
+                            Ver Historial
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   );
                 }) : (
                   <tr>
-                    <td colSpan={5} className="px-6 py-10 text-center text-slate-400">
+                    <td colSpan={6} className="px-6 py-10 text-center text-slate-400">
                       {activeTab === 'LECTURAS' ? `No hay lecturas registradas para el periodo ${selectedMes}.` : 'No hay deudas pendientes registradas.'}
                     </td>
                   </tr>
@@ -1261,95 +1423,315 @@ export default function Consumo() {
 
       {/* Modal Add Consumption */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-          <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 bg-slate-900 bg-opacity-75 transition-opacity" onClick={() => {
-              setIsModalOpen(false);
-              setEditingConsumption(null);
-              setEvidenciaFileBase64('');
-              setClientSearch('');
-              setFormData({ clientAndSuministro: '', lecturaAnterior: '', lecturaActual: '' });
-              setJustificacion('');
-            }}></div>
+        <div className="fixed inset-0 z-50 overflow-y-auto animate-fade-in" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 bg-slate-900 bg-opacity-75 transition-opacity" onClick={handleCloseModal}></div>
             <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-            <div className="relative z-10 inline-block align-bottom bg-[#0B0E14] rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full">
-              <form onSubmit={handleSubmit}>
-                <div className="bg-[#0B0E14] px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                  <h3 className="text-lg leading-6 font-medium text-slate-100" id="modal-title">
-                    {editingConsumption ? 'Editar Lectura Mensual' : 'Registrar Lectura Mensual'}
-                  </h3>
-                  <div className="mt-4 space-y-4">
+            
+            <div className={`relative z-10 inline-block align-bottom bg-[#0B0E14] rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle border border-slate-800 ${
+              (!formData.clientAndSuministro && !editingConsumption) ? 'sm:max-w-5xl md:max-w-6xl w-full' : 'sm:max-w-2xl w-full'
+            }`}>
+              
+              {(!formData.clientAndSuministro && !editingConsumption) ? (
+                /* SCREEN 1: ADVANCED SEARCH & FILTER PANEL WITH DYNAMIC RESULTS */
+                <div className="flex flex-col h-full max-h-[90vh]">
+                  {/* Header */}
+                  <div className="bg-[#0B0E14] px-6 py-4 border-b border-slate-800 flex items-center justify-between">
                     <div>
-                      <label className="block text-sm font-medium text-slate-300">Periodo</label>
-                      <input 
-                        type="month" 
-                        required 
-                        disabled={!!editingConsumption}
-                        value={selectedMes} 
-                        onChange={e => setSelectedMes(e.target.value)} 
-                        className="mt-1 block w-full border border-slate-700 rounded-md shadow-sm py-2 px-3 focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-[#0B0E14] text-slate-100 disabled:opacity-50" 
+                      <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+                        <Search className="w-5 h-5 text-blue-500" /> Búsqueda y Selección de Suministro
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Filtre y seleccione el suministro para registrar su lectura del periodo correspondiente.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCloseModal}
+                      className="text-slate-400 hover:text-slate-200 transition-colors p-1.5 rounded-lg hover:bg-slate-800"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Body Content */}
+                  <div className="px-6 py-4 space-y-4 overflow-y-auto flex-1">
+                    {/* Filters Grid */}
+                    <div className="bg-slate-900/40 border border-slate-800/80 rounded-xl p-4 space-y-3">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <span className="text-xs font-semibold text-blue-400 flex items-center gap-1.5 uppercase tracking-wider">
+                          <SlidersHorizontal className="w-3.5 h-3.5" /> Panel de Filtrado
+                        </span>
+                        <button
+                          type="button"
+                          onClick={clearFilters}
+                          className="text-[11px] text-slate-400 hover:text-slate-200 flex items-center gap-1 transition-colors hover:bg-slate-850 px-2 py-1 rounded border border-slate-800 bg-slate-900/60"
+                        >
+                          <RefreshCw className="w-3 h-3" /> Limpiar Filtros
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-400 mb-1">Periodo de Lectura</label>
+                          <input
+                            type="month"
+                            required
+                            value={selectedMes}
+                            onChange={e => setSelectedMes(e.target.value)}
+                            className="block w-full border border-slate-700 rounded-md shadow-sm py-1.5 px-2.5 text-xs bg-[#090C11] text-slate-100 focus:ring-blue-500 focus:border-blue-500 font-medium"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-400 mb-1">Suministro o Código</label>
+                          <input
+                            type="text"
+                            placeholder="Ej: SUM-001..."
+                            value={searchSupplyCode}
+                            onChange={e => setSearchSupplyCode(e.target.value)}
+                            className="block w-full border border-slate-700 rounded-md shadow-sm py-1.5 px-2.5 text-xs bg-[#090C11] text-slate-100 placeholder-slate-600 focus:ring-blue-500 focus:border-blue-500 font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-400 mb-1">DNI / RUC Titular</label>
+                          <input
+                            type="text"
+                            placeholder="Buscar por documento..."
+                            value={searchDniRuc}
+                            onChange={e => setSearchDniRuc(e.target.value)}
+                            className="block w-full border border-slate-700 rounded-md shadow-sm py-1.5 px-2.5 text-xs bg-[#090C11] text-slate-100 placeholder-slate-600 focus:ring-blue-500 focus:border-blue-500 font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-400 mb-1">Nombre o Razón Social</label>
+                          <input
+                            type="text"
+                            placeholder="Buscar por titular..."
+                            value={searchName}
+                            onChange={e => setSearchName(e.target.value)}
+                            className="block w-full border border-slate-700 rounded-md shadow-sm py-1.5 px-2.5 text-xs bg-[#090C11] text-slate-100 placeholder-slate-600 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quick Search general input */}
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Search className="h-4 w-4 text-slate-500" />
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Búsqueda rápida combinada (Suministro, DNI, Titular o Dirección)..."
+                        value={clientSearch}
+                        onChange={e => setClientSearch(e.target.value)}
+                        className="block w-full pl-9 pr-3 py-2 border border-slate-700 rounded-lg text-xs bg-[#090C11] text-slate-100 placeholder-slate-500 focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
+
+                    {/* Results Table Container */}
                     <div>
-                      <label className="block text-sm font-medium text-slate-300">Buscar Suministro (Suministro, DNI o Nombre)</label>
-                      <div className="relative">
-                        <input 
-                          ref={searchInputRef}
-                          type="text"
-                          required={!formData.clientAndSuministro}
-                          disabled={!!editingConsumption}
-                          placeholder="Buscar por código de suministro, DNI o Nombre..."
-                          value={clientSearch}
-                          onChange={(e) => {
-                            setClientSearch(e.target.value);
-                            setShowSuministroDropdown(true);
-                            if (formData.clientAndSuministro) {
-                              setFormData({ ...formData, clientAndSuministro: '' });
-                            }
-                          }}
-                          onFocus={() => {
-                            if (!editingConsumption) setShowSuministroDropdown(true);
-                          }}
-                          onBlur={() => {
-                            setTimeout(() => setShowSuministroDropdown(false), 200);
-                          }}
-                          className="mt-1 block w-full border border-slate-700 rounded-md shadow-sm py-2 px-3 focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-[#0B0E14] text-slate-100 disabled:opacity-50"
-                        />
-                        {showSuministroDropdown && !editingConsumption && (
-                          <ul className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-slate-800 py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm border border-slate-700">
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                        <Filter className="w-3.5 h-3.5 text-blue-500" /> Resultados de Búsqueda ({availableSupplies.length})
+                      </h4>
+                      <div className="overflow-x-auto border border-slate-800 rounded-lg bg-[#090C11]/35 max-h-[50vh] overflow-y-auto">
+                        <table className="min-w-full divide-y divide-slate-800 text-left text-xs text-slate-300">
+                          <thead className="bg-[#0B0F19] text-slate-400 uppercase font-bold text-[9px] tracking-wider sticky top-0 z-10 border-b border-slate-800">
+                            <tr>
+                              <th className="px-4 py-3 bg-[#0B0F19]">Suministro</th>
+                              <th className="px-4 py-3 bg-[#0B0F19]">DNI/RUC</th>
+                              <th className="px-4 py-3 bg-[#0B0F19]">Titular / Razón Social</th>
+                              <th className="px-4 py-3 bg-[#0B0F19]">Dirección</th>
+                              <th className="px-4 py-3 bg-[#0B0F19]">Tipo</th>
+                              <th className="px-4 py-3 bg-[#0B0F19]">Estado</th>
+                              <th className="px-4 py-3 bg-[#0B0F19] text-right">Lectura Anterior</th>
+                              <th className="px-4 py-3 bg-[#0B0F19]">Última Lectura</th>
+                              <th className="px-4 py-3 bg-[#0B0F19] text-center">Estado {selectedMes}</th>
+                              <th className="px-4 py-3 bg-[#0B0F19] text-center">Acción</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/50 bg-[#0B0E14]">
                             {availableSupplies.length > 0 ? (
-                              availableSupplies.map(s => (
-                                <li
-                                  key={`${s.id}|${s.sup}`}
-                                  className="relative cursor-pointer select-none py-2 pl-3 pr-9 text-slate-100 hover:bg-slate-700 hover:text-white border-b border-slate-700/50"
-                                  onClick={() => {
-                                    setFormData({ ...formData, clientAndSuministro: `${s.id}|${s.sup}` });
-                                    setClientSearch(s.label);
-                                    setShowSuministroDropdown(false);
-                                  }}
-                                >
-                                  <div className="font-medium text-purple-300 mb-0.5">{s.label}</div>
-                                  <div className="text-xs text-slate-400">{s.desc}</div>
-                                </li>
-                              ))
+                              availableSupplies.map(s => {
+                                const clientName = s.client.nombre ? s.client.nombre : `${s.client.nombres || ''} ${s.client.apellidos || ''}`;
+                                return (
+                                  <tr 
+                                    key={`${s.id}|${s.sup}`}
+                                    className="hover:bg-slate-800/40 transition-colors cursor-pointer group"
+                                    onClick={() => {
+                                      setFormData({
+                                        clientAndSuministro: `${s.id}|${s.sup}`,
+                                        lecturaAnterior: s.lecturaAnterior.toString(),
+                                        lecturaActual: ''
+                                      });
+                                      setClientSearch(s.label);
+                                    }}
+                                  >
+                                    <td className="px-4 py-3 font-bold text-blue-400 whitespace-nowrap group-hover:text-blue-300">
+                                      {s.sup}
+                                    </td>
+                                    <td className="px-4 py-3 font-mono text-slate-300 whitespace-nowrap">
+                                      {s.client.dni || '-'}
+                                    </td>
+                                    <td className="px-4 py-3 font-semibold text-slate-200 truncate max-w-[180px]" title={clientName}>
+                                      {clientName}
+                                    </td>
+                                    <td className="px-4 py-3 text-slate-400 truncate max-w-[200px]" title={`${s.client.direccion || ''} ${s.client.numeroDireccion || ''}`}>
+                                      {s.client.direccion || '-'} {s.client.numeroDireccion || ''}
+                                    </td>
+                                    <td className="px-4 py-3 whitespace-nowrap">
+                                      <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${
+                                        s.client.tipo === 'SOCIO' ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-800/30' : 'bg-blue-950/50 text-blue-400 border border-blue-800/30'
+                                      }`}>
+                                        {s.client.tipo}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 whitespace-nowrap">
+                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
+                                        s.client.estado === 'ACTIVO' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+                                      }`}>
+                                        <span className={`w-1.5 h-1.5 rounded-full ${s.client.estado === 'ACTIVO' ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
+                                        {s.client.estado}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-right font-mono font-bold text-slate-300 whitespace-nowrap">
+                                      {s.lecturaAnterior} kWh
+                                    </td>
+                                    <td className="px-4 py-3 text-slate-400 whitespace-nowrap text-[11px]">
+                                      {s.fechaUltimaLectura 
+                                        ? format(parseISO(s.fechaUltimaLectura), 'dd/MM/yyyy HH:mm', { locale: es }) 
+                                        : 'Sin registro'}
+                                    </td>
+                                    <td className="px-4 py-3 text-center whitespace-nowrap">
+                                      <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                        s.readingStatus === 'VALIDADA' 
+                                          ? 'bg-emerald-950/50 text-emerald-400 border-emerald-800/40' 
+                                          : s.readingStatus === 'REGISTRADA' 
+                                            ? 'bg-blue-950/50 text-blue-400 border-blue-800/40' 
+                                            : 'bg-amber-950/50 text-amber-500 border-amber-800/40'
+                                      }`}>
+                                        {s.readingStatus}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                      <Button 
+                                        type="button" 
+                                        size="sm" 
+                                        onClick={() => {
+                                          setFormData({
+                                            clientAndSuministro: `${s.id}|${s.sup}`,
+                                            lecturaAnterior: s.lecturaAnterior.toString(),
+                                            lecturaActual: ''
+                                          });
+                                          setClientSearch(s.label);
+                                        }}
+                                        className="h-7 py-1 px-2.5 text-[11px] font-bold flex items-center gap-1 shadow hover:shadow-blue-500/20"
+                                      >
+                                        Registrar <ChevronRight className="w-3.5 h-3.5" />
+                                      </Button>
+                                    </td>
+                                  </tr>
+                                );
+                              })
                             ) : (
-                              <li className="relative cursor-default select-none py-2 pl-3 pr-9 text-slate-400">
-                                No se encontraron resultados.
-                              </li>
+                              <tr>
+                                <td colSpan={10} className="p-12 text-center text-slate-400 text-sm">
+                                  No se encontraron suministros que coincidan con los filtros de búsqueda. Intente con otros términos o limpie los filtros.
+                                </td>
+                              </tr>
                             )}
-                          </ul>
-                        )}
+                          </tbody>
+                        </table>
                       </div>
-                      {ultimaLectura && !editingConsumption && (
-                        <div className="mt-2 p-2 bg-slate-800 rounded-md border border-slate-700 text-xs text-slate-300">
-                          <strong className="text-emerald-400 block mb-1">Última lectura registrada:</strong>
-                          {ultimaLectura.mes} - {ultimaLectura.kwh} kWh ({formatCurrency(ultimaLectura.montoCalculado)}) • Estado: <span className={ultimaLectura.estadoPago === 'PAGADO' ? 'text-emerald-400' : 'text-yellow-400'}>{ultimaLectura.estadoPago}</span>
+                    </div>
+                  </div>
+
+                  {/* Footer */}
+                  <div className="bg-slate-900/50 px-6 py-4 border-t border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-4">
+                    <div className="text-xs text-slate-400 text-center sm:text-left">
+                      Total de suministros filtrados: <span className="text-slate-200 font-semibold">{availableSupplies.length}</span> activos o cortados disponibles para lectura en el periodo <span className="text-blue-400 font-semibold">{selectedMes}</span>.
+                    </div>
+                    <Button type="button" variant="outline" onClick={handleCloseModal} className="w-full sm:w-auto">
+                      Cerrar Panel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                /* SCREEN 2: REGISTRATION FORM FOR THE SELECTED SUPPLY */
+                <form onSubmit={handleSubmit}>
+                  <div className="bg-[#0B0E14] px-6 pt-5 pb-4 sm:p-6 sm:pb-4 border-b border-slate-800/80">
+                    <h3 className="text-lg leading-6 font-bold text-slate-100 flex items-center gap-2" id="modal-title">
+                      <Zap className="w-5 h-5 text-amber-500" />
+                      {editingConsumption ? 'Editar Lectura Mensual' : 'Registrar Lectura Mensual'}
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Periodo actual seleccionado: <span className="text-blue-400 font-semibold">{selectedMes}</span>
+                    </p>
+                  </div>
+
+                  <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+                    {/* Selected supply card block */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-slate-900/40 border border-slate-800 rounded-xl p-4 gap-3">
+                      <div className="space-y-1">
+                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">SUMINISTRO SELECCIONADO</div>
+                        <div className="text-sm font-black text-blue-400 font-mono flex items-center gap-1.5">
+                          {formData.clientAndSuministro.split('|')[1]}
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${
+                            selectedClient?.tipo === 'SOCIO' ? 'bg-emerald-950/50 text-emerald-400' : 'bg-blue-950/50 text-blue-400'
+                          }`}>
+                            {selectedClient?.tipo}
+                          </span>
                         </div>
+                        <div className="text-xs text-slate-200 font-bold">
+                          {selectedClient?.nombre ? selectedClient.nombre : `${selectedClient?.nombres || ''} ${selectedClient?.apellidos || ''}`}
+                        </div>
+                        <div className="text-[11px] text-slate-400 leading-relaxed">
+                          DNI/RUC: <span className="font-mono text-slate-300 font-semibold">{selectedClient?.dni || '-'}</span> <br />
+                          Dirección: <span className="text-slate-300 font-semibold">{selectedClient?.direccion} {selectedClient?.numeroDireccion || ''}</span>
+                        </div>
+                      </div>
+                      {!editingConsumption && (
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => {
+                            setFormData({ ...formData, clientAndSuministro: '' });
+                            setClientSearch('');
+                          }}
+                          className="self-start sm:self-center text-xs border-slate-800 text-slate-300 hover:bg-slate-850 px-3 h-8 flex items-center gap-1"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5 text-slate-400" /> Cambiar
+                        </Button>
                       )}
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+
+                    {/* Historical Readings (Recent Consumptions) inside Form screen */}
+                    {selectedClientConsumptions.length > 0 && (
+                      <div className="p-4 bg-slate-950/50 border border-slate-850 rounded-xl space-y-2">
+                        <h4 className="text-xs font-bold text-slate-400 tracking-wide uppercase flex items-center gap-1.5 border-b border-slate-800 pb-2">
+                          <FileText className="w-4 h-4 text-blue-400" /> Historial Reciente de Consumo
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-32 overflow-y-auto pr-1">
+                          {selectedClientConsumptions.slice(-4).reverse().map(c => (
+                            <div key={c.id} className="flex justify-between items-center text-[11px] p-2 rounded bg-slate-900/60 border border-slate-800/80">
+                              <div className="space-y-0.5">
+                                <span className="font-bold text-slate-400">{c.mes}</span>
+                                <div className="text-[10px] text-slate-500">Lectura: {c.lecturaActual}</div>
+                              </div>
+                              <div className="text-right space-y-0.5">
+                                <span className="font-bold text-blue-400">{c.kwh} kWh</span>
+                                <div className="text-[10px] text-emerald-400 font-semibold">S/ {c.montoCalculado.toFixed(2)}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Readings Grid inputs */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-slate-300">Lectura Anterior (kWh)</label>
+                        <label className="block text-xs font-bold text-slate-400 mb-1">Lectura Anterior (kWh)</label>
                         <input 
                           type="number" 
                           min="0" 
@@ -1358,63 +1740,78 @@ export default function Consumo() {
                           required 
                           value={isFirstReading ? formData.lecturaAnterior : currentLecturaAnterior} 
                           onChange={e => setFormData({...formData, lecturaAnterior: e.target.value})} 
-                          className="mt-1 block w-full border border-slate-700 rounded-md shadow-sm py-2 px-3 focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-slate-800 text-slate-300" 
+                          className="block w-full border border-slate-800 rounded-lg py-2 px-3 text-xs bg-slate-900 text-slate-400 border-slate-800 font-mono font-bold focus:outline-none focus:ring-0 focus:border-slate-800" 
                         />
+                        <p className="text-[10px] text-slate-500 mt-1">Sincronizado automáticamente del periodo anterior.</p>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-slate-300">Lectura Actual (kWh)</label>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">Lectura Actual (kWh) <span className="text-red-500">*</span></label>
                         <input 
                           type="number" 
                           min="0" 
                           step="1"
                           required 
+                          placeholder="Ingrese lectura actual del medidor..."
                           value={formData.lecturaActual} 
                           onChange={e => setFormData({...formData, lecturaActual: e.target.value})} 
-                          className={`mt-1 block w-full border rounded-md shadow-sm py-2 px-3 focus:outline-none sm:text-sm bg-[#0B0E14] text-slate-100 transition-colors duration-200 border-slate-700 focus:ring-blue-500 focus:border-blue-500`}
+                          className="block w-full border border-slate-700 rounded-lg py-2 px-3 text-xs bg-[#090C11] text-slate-100 placeholder-slate-600 focus:ring-blue-500 focus:border-blue-500 font-mono font-bold"
                         />
                         {isAtypical && (
-                          <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-400 text-left space-y-1 block">
-                            <div className="flex items-center gap-1.5 font-bold text-amber-300 border-b border-amber-500/20 pb-1 mb-1">
+                          <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-400 text-left space-y-1 block animate-pulse">
+                            <div className="flex items-center gap-1.5 font-bold text-amber-300 border-b border-amber-500/10 pb-1 mb-1">
                               <AlertCircle className="w-4 h-4 shrink-0 text-amber-500" />
-                              Alerta: Lectura Atípica Detectada
+                              Lectura Atípica Detectada
                             </div>
-                            <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-amber-200">
+                            <ul className="list-disc pl-4 space-y-0.5 text-[10px] text-amber-200">
                               {atypicalReasons.map((reason, idx) => (
                                 <li key={idx}>{reason}</li>
                               ))}
                             </ul>
-                            <p className="text-[10px] text-amber-400 font-semibold mt-1">
+                            <p className="text-[9px] text-amber-400 font-semibold mt-1">
                               * Se requiere de forma obligatoria fotografía de evidencia y justificación.
                             </p>
                           </div>
                         )}
                         {!isAtypical && formData.lecturaActual !== '' && (
-                          <p className="mt-1 flex items-center text-xs text-emerald-500 text-left">
+                          <p className="mt-1 flex items-center text-[10px] text-emerald-400 font-medium text-left">
                             <Check className="w-3.5 h-3.5 mr-1 inline" />
                             Consumo en rango normal (Fotografía y observación opcionales).
                           </p>
                         )}
                       </div>
                     </div>
+
+                    {/* Live consumption stats panel */}
                     {formData.clientAndSuministro && formData.lecturaActual && (
-                      <p className="mt-2 text-sm text-slate-400 font-medium">
-                        Consumo: {currentKwh} kWh | Monto: {formatCurrency(Math.max((currentKwh) * (
-                          (() => {
-                             const selClient = clients.find(c => c.id === formData.clientAndSuministro.split('|')[0]);
-                             const isSocio = suppliesInfo?.find(s => s.codigo === formData.clientAndSuministro.split('|')[1])?.isSocio ?? (selClient?.tipo === 'SOCIO');
-                             return selClient?.faseSuministro === 'TRIFASICO' && (settings?.costoTrifasico || 0) > 0
-                               ? (settings?.costoTrifasico || 0)
-                               : isSocio 
-                                 ? (settings?.costoSocio || 0.20)
-                                 : (settings?.costoUsuario || 0.30);
-                          })()
-                        ), settings?.consumoMinimo !== undefined ? settings.consumoMinimo : 6))}
-                      </p>
+                      <div className="bg-[#090C11] border border-slate-800 rounded-xl p-4 flex justify-between items-center">
+                        <div className="space-y-0.5">
+                          <span className="text-[10px] font-bold text-slate-500 tracking-wider">CONSUMO CALCULADO</span>
+                          <div className="text-lg font-black text-slate-100 font-mono">
+                            {currentKwh} <span className="text-xs text-slate-400 font-medium">kWh</span>
+                          </div>
+                        </div>
+                        <div className="text-right space-y-0.5">
+                          <span className="text-[10px] font-bold text-slate-500 tracking-wider">MONTO ESTIMADO</span>
+                          <div className="text-lg font-black text-emerald-400 font-mono">
+                            {formatCurrency(Math.max((currentKwh) * (
+                              (() => {
+                                 const selClient = clients.find(c => c.id === formData.clientAndSuministro.split('|')[0]);
+                                 const isSocio = suppliesInfo?.find(s => s.codigo === formData.clientAndSuministro.split('|')[1])?.isSocio ?? (selClient?.tipo === 'SOCIO');
+                                 return selClient?.faseSuministro === 'TRIFASICO' && (settings?.costoTrifasico || 0) > 0
+                                   ? (settings?.costoTrifasico || 0)
+                                   : isSocio 
+                                     ? (settings?.costoSocio || 0.20)
+                                     : (settings?.costoUsuario || 0.30);
+                              })()
+                            ), settings?.consumoMinimo !== undefined ? settings.consumoMinimo : 6))}
+                          </div>
+                        </div>
+                      </div>
                     )}
 
-                    {/* Evidencia Fotográfica */}
-                    <div className="mt-4">
-                      <label className="block text-sm font-medium text-slate-300 mb-1">
+                    {/* Photo Evidence with drag and drop */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">
                         Evidencia Fotográfica de la Lectura {isAtypical && <span className="text-red-400 font-semibold">(Obligatorio por Lectura Atípica)</span>}
                       </label>
                       <div
@@ -1423,7 +1820,7 @@ export default function Consumo() {
                         onDragLeave={handleDrag}
                         onDrop={handleDrop}
                         className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-all ${
-                          isDragActive ? 'border-blue-500 bg-blue-500/10' : 'border-slate-700 bg-slate-950 hover:border-slate-600'
+                          isDragActive ? 'border-blue-500 bg-blue-500/10' : 'border-slate-800 bg-[#090C11] hover:border-slate-700'
                         }`}
                         onClick={() => document.getElementById('foto-input-medidor')?.click()}
                       >
@@ -1440,7 +1837,7 @@ export default function Consumo() {
                               <img
                                 src={evidenciaFileBase64}
                                 alt="Evidencia de lectura"
-                                className="max-h-24 mx-auto rounded border border-slate-700 object-cover"
+                                className="max-h-28 mx-auto rounded-lg border border-slate-800 object-cover"
                               />
                               <button
                                 type="button"
@@ -1454,50 +1851,54 @@ export default function Consumo() {
                                 <X className="h-3 w-3" />
                               </button>
                             </div>
-                            <p className="text-xs text-slate-400 font-medium">Foto cargada con éxito. Pulse para cambiar.</p>
+                            <p className="text-xs text-slate-400 font-semibold">Foto cargada correctamente. Pulse para cambiar.</p>
                           </div>
                         ) : (
                           <div className="py-2">
-                            <Camera className="mx-auto h-8 w-8 text-slate-500 mb-2" />
-                            <p className="text-xs font-semibold text-slate-300">Arrastre y suelte una foto aquí, o pulse para seleccionar</p>
-                            <p className="text-[10px] text-slate-500 mt-1">Soporta: JPG, PNG, WEBP (Max 5MB)</p>
+                            <Camera className="mx-auto h-8 w-8 text-slate-500 mb-1" />
+                            <p className="text-xs font-semibold text-slate-300">Arrastre y suelte una fotografía del medidor aquí, o pulse para explorar</p>
+                            <p className="text-[10px] text-slate-500">Formatos válidos: JPG, PNG, WEBP (Max 5MB)</p>
                           </div>
                         )}
                       </div>
                     </div>
 
                     {/* Observación / Justificación */}
-                    <div className="mt-4">
-                      <label className="block text-sm font-medium text-slate-300 mb-1">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">
                         Observación u Justificación {isAtypical && <span className="text-red-400 font-semibold">(Obligatorio por Lectura Atípica)</span>}
                       </label>
                       <textarea
                         rows={2}
                         placeholder={isAtypical 
-                          ? "Describa el motivo de la variación (ej. fuga identificada, cambio de de medidor, etc.)..."
-                          : "Ingrese una observación opcional si corresponde..."}
+                          ? "Describa detalladamente el motivo de la variación significativa del consumo..."
+                          : "Ingrese una observación o comentario si corresponde..."}
                         value={justificacion}
                         onChange={e => setJustificacion(e.target.value)}
                         required={isAtypical}
-                        className="mt-1 block w-full border border-slate-700 rounded-md shadow-sm py-2 px-3 focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-[#0B0E14] text-slate-100 placeholder-slate-600 focus:outline-none"
+                        className="block w-full border border-slate-700 rounded-lg py-2 px-3 text-xs bg-[#090C11] text-slate-100 placeholder-slate-600 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
                       />
                     </div>
                   </div>
-                </div>
-                <div className="bg-slate-800/50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                  <Button type="submit" className="w-full sm:ml-3 sm:w-auto">
-                    {editingConsumption ? 'Guardar Cambios' : 'Guardar Lectura'}
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => {
-                    setIsModalOpen(false);
-                    setEditingConsumption(null);
-                    setEvidenciaFileBase64('');
-                    setClientSearch('');
-                    setFormData({ clientAndSuministro: '', lecturaAnterior: '', lecturaActual: '' });
-                    setJustificacion('');
-                  }} className="mt-3 w-full sm:mt-0 sm:w-auto">Cancelar</Button>
-                </div>
-              </form>
+
+                  <div className="bg-slate-900/50 px-6 py-4 border-t border-slate-800 flex flex-col sm:flex-row-reverse sm:justify-start gap-3">
+                    <Button type="submit" className="w-full sm:w-auto h-9 font-bold px-5 shadow shadow-blue-500/20">
+                      {editingConsumption ? 'Guardar Cambios' : 'Guardar Lectura'}
+                    </Button>
+                    <Button type="button" variant="outline" onClick={() => {
+                      if (editingConsumption) {
+                        handleCloseModal();
+                      } else {
+                        // Go back to Screen 1 (search screen)
+                        setFormData({ ...formData, clientAndSuministro: '' });
+                        setClientSearch('');
+                      }
+                    }} className="w-full sm:w-auto h-9 font-bold text-slate-300 border-slate-800 bg-transparent hover:bg-slate-900">
+                      {editingConsumption ? 'Cancelar' : 'Atrás a Búsqueda'}
+                    </Button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
         </div>
