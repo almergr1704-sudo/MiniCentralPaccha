@@ -46,7 +46,18 @@ interface AppContextType extends AppState {
   addAdmin: (admin: any) => Promise<void>;
   deleteConsumption: (id: string, reason: string) => Promise<void>;
   markSupplyAsSocio: (supplyCode: string) => Promise<void>;
-  setSupplySocioStatus: (supplyCode: string, isSocio: boolean, addressInfo?: { direccion?: string; sector?: string; referenciaDireccion?: string }) => Promise<void>;
+  setSupplySocioStatus: (
+    supplyCode: string, 
+    isSocio: boolean, 
+    addressInfo?: { 
+      direccion?: string; 
+      sector?: string; 
+      referenciaDireccion?: string;
+      tipoVia?: string;
+      nombreVia?: string;
+      numeroDireccion?: string;
+    }
+  ) => Promise<void>;
   login: (email: string) => void;
   logout: () => void;
   addTrabajador: (trabajador: Omit<Trabajador, 'id' | 'fechaRegistro'>) => Promise<void>;
@@ -496,14 +507,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setSupplySocioStatus = async (
     supplyCode: string, 
     isSocio: boolean, 
-    addressInfo?: { direccion?: string; sector?: string; referenciaDireccion?: string }
+    addressInfo?: { 
+      direccion?: string; 
+      sector?: string; 
+      referenciaDireccion?: string;
+      tipoVia?: string;
+      nombreVia?: string;
+      numeroDireccion?: string;
+    }
   ) => {
     const existing = state.suppliesInfo.find(s => s.codigo === supplyCode);
     const hasSocioDiff = existing ? existing.isSocio !== isSocio : true;
     const hasAddressDiff = addressInfo ? (
       existing?.direccion !== addressInfo.direccion ||
       existing?.sector !== addressInfo.sector ||
-      existing?.referenciaDireccion !== addressInfo.referenciaDireccion
+      existing?.referenciaDireccion !== addressInfo.referenciaDireccion ||
+      existing?.tipoVia !== addressInfo.tipoVia ||
+      existing?.nombreVia !== addressInfo.nombreVia ||
+      existing?.numeroDireccion !== addressInfo.numeroDireccion
     ) : false;
 
     if (!hasSocioDiff && !hasAddressDiff && existing) return;
@@ -514,7 +535,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       fechaSocio: isSocio ? (existing?.fechaSocio || new Date().toISOString()) : undefined,
       direccion: addressInfo?.direccion ?? existing?.direccion ?? '',
       sector: addressInfo?.sector ?? existing?.sector ?? '',
-      referenciaDireccion: addressInfo?.referenciaDireccion ?? existing?.referenciaDireccion ?? ''
+      referenciaDireccion: addressInfo?.referenciaDireccion ?? existing?.referenciaDireccion ?? '',
+      tipoVia: addressInfo?.tipoVia ?? existing?.tipoVia ?? '',
+      nombreVia: addressInfo?.nombreVia ?? existing?.nombreVia ?? '',
+      numeroDireccion: addressInfo?.numeroDireccion ?? existing?.numeroDireccion ?? ''
     };
     await setDoc(doc(db, 'suppliesInfo', supplyCode), cleanUndefinedKeys(newSocioInfo));
     addAuditLog('ACTUALIZAR', 'SOCIOS', `Definió condición de ${isSocio ? 'SOCIO' : 'USUARIO'} y dirección al suministro ${supplyCode}`);
@@ -571,7 +595,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fechaSocio: isSocio ? new Date().toISOString() : undefined,
         direccion: client.direccion || '',
         referenciaDireccion: client.referenciaDireccion || '',
-        sector: ''
+        sector: client.sector || '',
+        tipoVia: client.tipoVia || '',
+        nombreVia: client.nombreVia || '',
+        numeroDireccion: client.numeroDireccion || ''
       };
       batch.set(doc(db, 'suppliesInfo', normalizedSup), cleanUndefinedKeys(item));
     });

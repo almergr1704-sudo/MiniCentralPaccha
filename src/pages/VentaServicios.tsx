@@ -35,6 +35,9 @@ export default function VentaServicios() {
     categoria: 'MONOFASICO' as 'MONOFASICO' | 'TRIFASICO',
     montoPagado: settings?.ventaNuevoServicio || 0,
     observacionPago: 'Venta de Nuevo Servicio de Energía',
+    tipoVia: '',
+    nombreVia: '',
+    numeroDireccion: '',
   });
 
   // Calculate Next Suministro ID automatically
@@ -72,16 +75,17 @@ export default function VentaServicios() {
           return;
         }
         
-        const refDir = formData.sector ? `Sector: ${formData.sector} - ${formData.referenciaDireccion}` : formData.referenciaDireccion;
+        const viaCombined = `${formData.tipoVia || ''} ${formData.nombreVia || ''}`.trim();
+        const constructedDireccion = `${viaCombined}${formData.numeroDireccion ? ` N° ${formData.numeroDireccion}` : ''}${formData.sector ? ` - ${formData.sector}` : ''}`;
 
         const newClient = await addClient({
           nombres: formData.nombres,
           apellidos: formData.apellidos,
           tipoPersona: 'PERSONA',
           dni: formData.dni,
-          direccion: formData.direccion,
-          numeroDireccion: '',
-          referenciaDireccion: refDir,
+          direccion: constructedDireccion,
+          numeroDireccion: formData.numeroDireccion,
+          referenciaDireccion: formData.referenciaDireccion,
           telefono: formData.telefono,
           correo: '',
           codigoSuministro: formData.codigoSuministro,
@@ -89,14 +93,20 @@ export default function VentaServicios() {
           numeroMedidor: formData.numeroMedidor || undefined,
           tipo: formData.tipo,
           faseSuministro: formData.categoria,
-          estado: 'ACTIVO'
+          estado: 'ACTIVO',
+          tipoVia: formData.tipoVia,
+          nombreVia: formData.nombreVia,
+          sector: formData.sector
         });
         finalClientId = newClient.id;
 
         await setSupplySocioStatus(formData.codigoSuministro, formData.tipo === 'SOCIO', {
-          direccion: formData.direccion,
+          direccion: constructedDireccion,
           sector: formData.sector,
-          referenciaDireccion: refDir
+          referenciaDireccion: formData.referenciaDireccion,
+          tipoVia: formData.tipoVia,
+          nombreVia: formData.nombreVia,
+          numeroDireccion: formData.numeroDireccion
         });
       } else {
         if (!selectedClientId) {
@@ -104,9 +114,30 @@ export default function VentaServicios() {
           return;
         }
         const clientObj = clients.find(c => c.id === selectedClientId);
-        const refDir = useExistingAddress 
-          ? (clientObj?.referenciaDireccion || '') 
-          : (formData.sector ? `Sector: ${formData.sector} - ${formData.referenciaDireccion}` : formData.referenciaDireccion);
+        
+        let targetDireccion = '';
+        let targetSector = '';
+        let targetReferencia = '';
+        let targetTipoVia = '';
+        let targetNombreVia = '';
+        let targetNumeroDireccion = '';
+
+        if (useExistingAddress) {
+          targetDireccion = clientObj?.direccion || '';
+          targetSector = clientObj?.sector || '';
+          targetReferencia = clientObj?.referenciaDireccion || '';
+          targetTipoVia = clientObj?.tipoVia || '';
+          targetNombreVia = clientObj?.nombreVia || '';
+          targetNumeroDireccion = clientObj?.numeroDireccion || '';
+        } else {
+          const viaCombined = `${formData.tipoVia || ''} ${formData.nombreVia || ''}`.trim();
+          targetDireccion = `${viaCombined}${formData.numeroDireccion ? ` N° ${formData.numeroDireccion}` : ''}${formData.sector ? ` - ${formData.sector}` : ''}`;
+          targetSector = formData.sector;
+          targetReferencia = formData.referenciaDireccion;
+          targetTipoVia = formData.tipoVia;
+          targetNombreVia = formData.nombreVia;
+          targetNumeroDireccion = formData.numeroDireccion;
+        }
 
         await updateClient(selectedClientId, {
           suministros: [...(clientObj?.suministros || []), formData.codigoSuministro] as string[],
@@ -114,9 +145,12 @@ export default function VentaServicios() {
         });
 
         await setSupplySocioStatus(formData.codigoSuministro, formData.tipo === 'SOCIO', {
-          direccion: useExistingAddress ? (clientObj?.direccion || '') : formData.direccion,
-          sector: useExistingAddress ? '' : formData.sector,
-          referenciaDireccion: refDir
+          direccion: targetDireccion,
+          sector: targetSector,
+          referenciaDireccion: targetReferencia,
+          tipoVia: targetTipoVia,
+          nombreVia: targetNombreVia,
+          numeroDireccion: targetNumeroDireccion
         });
         finalClientId = selectedClientId;
       }
@@ -160,6 +194,9 @@ export default function VentaServicios() {
       categoria: 'MONOFASICO',
       montoPagado: settings?.ventaNuevoServicio || 0,
       observacionPago: 'Venta de Nuevo Servicio de Energía',
+      tipoVia: '',
+      nombreVia: '',
+      numeroDireccion: '',
     });
     setSaleType('NEW_CLIENT');
     setSelectedClientId('');
@@ -416,38 +453,74 @@ export default function VentaServicios() {
 
                               {!useExistingAddress && (
                                 <div className="space-y-3 bg-slate-900/30 p-3 rounded-md border border-slate-800/60 mt-3">
-                                  <div>
-                                    <label className="block text-xs font-medium text-slate-400">Nueva Dirección *</label>
-                                    <input 
-                                      type="text" 
-                                      required 
-                                      value={formData.direccion} 
-                                      onChange={e => setFormData({...formData, direccion: e.target.value})} 
-                                      placeholder="Ej: Jr. Comercio N° 456"
-                                      className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-xs focus:outline-none focus:ring-blue-500 text-slate-200" 
-                                    />
-                                  </div>
-                                  <div className="grid grid-cols-2 gap-3">
+                                  <div className="text-xs font-bold uppercase text-blue-400 tracking-wider">Nueva Dirección Estructurada</div>
+                                  
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                     <div>
-                                      <label className="block text-xs font-medium text-slate-400">Sector / Barrio</label>
+                                      <label className="block text-xs font-medium text-slate-400">Tipo de Vía *</label>
+                                      <select 
+                                        required 
+                                        value={formData.tipoVia} 
+                                        onChange={e => setFormData({...formData, tipoVia: e.target.value})} 
+                                        className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-xs focus:outline-none focus:ring-blue-500 text-slate-200"
+                                      >
+                                        <option value="">-- Seleccionar --</option>
+                                        <option value="Avenida">Avenida</option>
+                                        <option value="Calle">Calle</option>
+                                        <option value="Jirón">Jirón</option>
+                                        <option value="Pasaje">Pasaje</option>
+                                        <option value="Carretera">Carretera</option>
+                                        <option value="Prolongación">Prolongación</option>
+                                        <option value="Otros">Otros</option>
+                                      </select>
+                                    </div>
+                                    <div className="sm:col-span-2">
+                                      <label className="block text-xs font-medium text-slate-400">Nombre de la Vía *</label>
                                       <input 
                                         type="text" 
+                                        required 
+                                        value={formData.nombreVia} 
+                                        onChange={e => setFormData({...formData, nombreVia: e.target.value})} 
+                                        placeholder="Ej: Larco, Bolognesi, etc."
+                                        className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-xs focus:outline-none focus:ring-blue-500 text-slate-200" 
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                      <label className="block text-xs font-medium text-slate-400">N.º de Dirección *</label>
+                                      <input 
+                                        type="text" 
+                                        required 
+                                        value={formData.numeroDireccion} 
+                                        onChange={e => setFormData({...formData, numeroDireccion: e.target.value})} 
+                                        placeholder="Ej: 123, S/N, Mz A Lt 5"
+                                        className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-xs focus:outline-none focus:ring-blue-500 text-slate-200" 
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-medium text-slate-400">Sector / Barrio / Urbanización *</label>
+                                      <input 
+                                        type="text" 
+                                        required 
                                         value={formData.sector} 
                                         onChange={e => setFormData({...formData, sector: e.target.value})} 
-                                        placeholder="Ej: Sector Alto"
+                                        placeholder="Ej: Sector Alto, Barrio San José"
                                         className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-xs focus:outline-none focus:ring-blue-500 text-slate-200" 
                                       />
                                     </div>
-                                    <div>
-                                      <label className="block text-xs font-medium text-slate-400">Referencia</label>
-                                      <input 
-                                        type="text" 
-                                        value={formData.referenciaDireccion} 
-                                        onChange={e => setFormData({...formData, referenciaDireccion: e.target.value})} 
-                                        placeholder="Ej: Costado de la escuela"
-                                        className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-xs focus:outline-none focus:ring-blue-500 text-slate-200" 
-                                      />
-                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-xs font-medium text-slate-400">Referencia (Opcional)</label>
+                                    <input 
+                                      type="text" 
+                                      value={formData.referenciaDireccion} 
+                                      onChange={e => setFormData({...formData, referenciaDireccion: e.target.value})} 
+                                      placeholder="Ej: Costado del parque, portón azul"
+                                      className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-xs focus:outline-none focus:ring-blue-500 text-slate-200" 
+                                    />
                                   </div>
                                 </div>
                               )}
@@ -535,17 +608,76 @@ export default function VentaServicios() {
                         <label className="block text-xs font-medium text-slate-400">Teléfono</label>
                         <input type="text" value={formData.telefono} onChange={e => setFormData({...formData, telefono: e.target.value})} className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-blue-500" />
                       </div>
-                      <div className="sm:col-span-2">
-                        <label className="block text-xs font-medium text-slate-400">Dirección</label>
-                        <input type="text" value={formData.direccion} onChange={e => setFormData({...formData, direccion: e.target.value})} className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-blue-500" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-400">Sector / Barrio</label>
-                        <input type="text" value={formData.sector} onChange={e => setFormData({...formData, sector: e.target.value})} className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-blue-500" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-400">Referencia de Dirección</label>
-                        <input type="text" value={formData.referenciaDireccion} onChange={e => setFormData({...formData, referenciaDireccion: e.target.value})} className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-blue-500" />
+                      <div className="sm:col-span-2 border-t border-slate-800/80 pt-3 mt-1 space-y-3">
+                        <div className="text-xs font-bold uppercase text-blue-400 tracking-wider">Dirección Estructurada</div>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-slate-400">Tipo de Vía *</label>
+                            <select 
+                              required 
+                              value={formData.tipoVia} 
+                              onChange={e => setFormData({...formData, tipoVia: e.target.value})} 
+                              className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-blue-500 text-slate-200"
+                            >
+                              <option value="">-- Seleccionar --</option>
+                              <option value="Avenida">Avenida</option>
+                              <option value="Calle">Calle</option>
+                              <option value="Jirón">Jirón</option>
+                              <option value="Pasaje">Pasaje</option>
+                              <option value="Carretera">Carretera</option>
+                              <option value="Prolongación">Prolongación</option>
+                              <option value="Otros">Otros</option>
+                            </select>
+                          </div>
+                          <div className="sm:col-span-2">
+                            <label className="block text-xs font-medium text-slate-400">Nombre de la Vía *</label>
+                            <input 
+                              type="text" 
+                              required 
+                              value={formData.nombreVia} 
+                              onChange={e => setFormData({...formData, nombreVia: e.target.value})} 
+                              placeholder="Ej: Larco, Bolognesi, etc."
+                              className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-blue-500 text-slate-200" 
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-slate-400">N.º de Dirección *</label>
+                            <input 
+                              type="text" 
+                              required 
+                              value={formData.numeroDireccion} 
+                              onChange={e => setFormData({...formData, numeroDireccion: e.target.value})} 
+                              placeholder="Ej: 123, S/N, Mz A Lt 5"
+                              className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-blue-500 text-slate-200" 
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-400">Sector / Barrio / Urbanización *</label>
+                            <input 
+                              type="text" 
+                              required 
+                              value={formData.sector} 
+                              onChange={e => setFormData({...formData, sector: e.target.value})} 
+                              placeholder="Ej: Sector Alto, Barrio San José"
+                              className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-blue-500 text-slate-200" 
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-slate-400">Referencia (Opcional)</label>
+                          <input 
+                            type="text" 
+                            value={formData.referenciaDireccion} 
+                            onChange={e => setFormData({...formData, referenciaDireccion: e.target.value})} 
+                            placeholder="Ej: Costado del parque, portón azul"
+                            className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-blue-500 text-slate-200" 
+                          />
+                        </div>
                       </div>
                     </div>
                   )}

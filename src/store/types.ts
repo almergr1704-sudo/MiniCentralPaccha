@@ -25,6 +25,9 @@ export interface Client {
   fechaRegistro: string;
   nombre?: string; // Legacy fallback
   createdBy?: string; // Para trazabilidad/auditoría
+  tipoVia?: string;
+  nombreVia?: string;
+  sector?: string;
 }
 
 export interface Consumption {
@@ -113,6 +116,9 @@ export interface SupplyInfo {
   direccion?: string;
   sector?: string;
   referenciaDireccion?: string;
+  tipoVia?: string;
+  nombreVia?: string;
+  numeroDireccion?: string;
 }
 
 export interface Trabajador {
