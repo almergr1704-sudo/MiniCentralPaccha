@@ -39,6 +39,9 @@ export default function Finanzas() {
   const [filterType, setFilterType] = useState<TransactionType | 'TODOS'>('INGRESO');
   const [selectedMes, setSelectedMes] = useState(''); // Empty means All time
   const [clientSearch, setClientSearch] = useState('');
+  const [searchSupplyCode, setSearchSupplyCode] = useState('');
+  const [searchDniRuc, setSearchDniRuc] = useState('');
+  const [searchName, setSearchName] = useState('');
   const [showOnlyAptForCut, setShowOnlyAptForCut] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedSupplyCode, setSelectedSupplyCode] = useState('');
@@ -93,6 +96,9 @@ export default function Finanzas() {
     setFormData({ tipo: 'INGRESO', categoria: 'OTROS', monto: '', descripcion: '', destinatario: '' });
     setSelectedClientId('');
     setClientSearch('');
+    setSearchSupplyCode('');
+    setSearchDniRuc('');
+    setSearchName('');
     setSueldoForm({
       trabajadorId: '',
       trabajadorNombreCompleto: '',
@@ -695,18 +701,47 @@ export default function Finanzas() {
         if (!(pendingDebtsCount >= 3 && c.estado !== 'CORTADO')) return false;
     }
 
-    if (!clientSearch) return true;
-    const searchNormalized = normalizeSearchText(clientSearch);
-    const rawFullName = c.nombre ? c.nombre : `${c.nombres || ''} ${c.apellidos || ''}`;
-    const fullName = normalizeSearchText(rawFullName);
-    const dni = normalizeSearchText(c.dni || '');
-    const address = normalizeSearchText(c.direccion || '');
-    const clientSupplies = c.suministros?.length ? c.suministros : [c.codigoSuministro];
-    const allSuppliesStr = normalizeSearchText(clientSupplies.join(' '));
-    return allSuppliesStr.includes(searchNormalized) ||
-           dni.includes(searchNormalized) ||
-           fullName.includes(searchNormalized) ||
-           address.includes(searchNormalized);
+    if (!clientSearch && !searchSupplyCode && !searchDniRuc && !searchName) return true;
+    
+    let matches = true;
+
+    if (clientSearch) {
+      const searchNormalized = normalizeSearchText(clientSearch);
+      const rawFullName = c.nombre ? c.nombre : `${c.nombres || ''} ${c.apellidos || ''}`;
+      const fullName = normalizeSearchText(rawFullName);
+      const dni = normalizeSearchText(c.dni || '');
+      const address = normalizeSearchText(c.direccion || '');
+      const clientSupplies = c.suministros?.length ? c.suministros : [c.codigoSuministro];
+      const allSuppliesStr = normalizeSearchText(clientSupplies.join(' '));
+      
+      const itemMatch = allSuppliesStr.includes(searchNormalized) ||
+                        dni.includes(searchNormalized) ||
+                        fullName.includes(searchNormalized) ||
+                        address.includes(searchNormalized);
+      if (!itemMatch) matches = false;
+    }
+
+    if (searchSupplyCode) {
+      const searchNormalized = normalizeSearchText(searchSupplyCode);
+      const clientSupplies = c.suministros?.length ? c.suministros : [c.codigoSuministro];
+      const allSuppliesStr = normalizeSearchText(clientSupplies.join(' '));
+      if (!allSuppliesStr.includes(searchNormalized)) matches = false;
+    }
+
+    if (searchDniRuc) {
+      const searchNormalized = normalizeSearchText(searchDniRuc);
+      const dni = normalizeSearchText(c.dni || '');
+      if (!dni.includes(searchNormalized)) matches = false;
+    }
+
+    if (searchName) {
+      const searchNormalized = normalizeSearchText(searchName);
+      const rawFullName = c.nombre ? c.nombre : `${c.nombres || ''} ${c.apellidos || ''}`;
+      const fullName = normalizeSearchText(rawFullName);
+      if (!fullName.includes(searchNormalized)) matches = false;
+    }
+
+    return matches;
   });
 
   const availableSupplies = React.useMemo(() => {
@@ -718,6 +753,7 @@ export default function Finanzas() {
        client: typeof clients[0];
        pendingBalance: number;
        hasDebt: boolean;
+       pendingMonthsCount: number;
      }[] = [];
      searchedClients.forEach(c => {
         const clientSupplies = c.suministros?.length ? c.suministros : [c.codigoSuministro];
@@ -740,64 +776,75 @@ export default function Finanzas() {
               desc: `DNI/RUC: ${c.dni} | Direcc: ${c.direccion || '-'} | Tipo: ${c.tipo} | Est: ${c.estado}`,
               client: c,
               pendingBalance: totalPending,
-              hasDebt: totalPending > 0
+              hasDebt: totalPending > 0,
+              pendingMonthsCount: supplyConsumptions.length
            });
         });
-     });
+      });
 
-     if (clientSearch) {
-       const searchLower = normalizeSearchText(clientSearch);
-       supplies.sort((a, b) => {
-         // Calculate relevance score for 'a'
-         let scoreA = 0;
-         const supA = normalizeSearchText(a.sup);
-         const dniA = normalizeSearchText(a.client.dni || '');
-         const rawNameA = a.client.nombre ? a.client.nombre : `${a.client.nombres || ''} ${a.client.apellidos || ''}`;
-         const nameA = normalizeSearchText(rawNameA);
-         const addrA = normalizeSearchText(a.client.direccion || '');
+      if (clientSearch || searchSupplyCode || searchDniRuc || searchName) {
+        supplies.sort((a, b) => {
+          let scoreA = 0;
+          let scoreB = 0;
 
-         if (supA === searchLower) scoreA += 1000;
-         else if (supA.startsWith(searchLower)) scoreA += 500;
-         else if (supA.includes(searchLower)) scoreA += 100;
+          const calcScore = (item: typeof a) => {
+            let score = 0;
+            const supLower = normalizeSearchText(item.sup);
+            const dniLower = normalizeSearchText(item.client.dni || '');
+            const rawName = item.client.nombre ? item.client.nombre : `${item.client.nombres || ''} ${item.client.apellidos || ''}`;
+            const nameLower = normalizeSearchText(rawName);
+            const addrLower = normalizeSearchText(item.client.direccion || '');
 
-         if (dniA === searchLower) scoreA += 800;
-         else if (dniA.startsWith(searchLower)) scoreA += 400;
-         else if (dniA.includes(searchLower)) scoreA += 80;
+            if (clientSearch) {
+              const q = normalizeSearchText(clientSearch);
+              if (supLower === q) score += 1000;
+              else if (supLower.startsWith(q)) score += 500;
+              else if (supLower.includes(q)) score += 100;
 
-         if (nameA === searchLower) scoreA += 600;
-         else if (nameA.startsWith(searchLower)) scoreA += 300;
-         else if (nameA.includes(searchLower)) scoreA += 60;
+              if (dniLower === q) score += 800;
+              else if (dniLower.startsWith(q)) score += 400;
+              else if (dniLower.includes(q)) score += 80;
 
-         if (addrA.includes(searchLower)) scoreA += 20;
+              if (nameLower === q) score += 600;
+              else if (nameLower.startsWith(q)) score += 300;
+              else if (nameLower.includes(q)) score += 60;
 
-         // Calculate relevance score for 'b'
-         let scoreB = 0;
-         const supB = normalizeSearchText(b.sup);
-         const dniB = normalizeSearchText(b.client.dni || '');
-         const rawNameB = b.client.nombre ? b.client.nombre : `${b.client.nombres || ''} ${b.client.apellidos || ''}`;
-         const nameB = normalizeSearchText(rawNameB);
-         const addrB = normalizeSearchText(b.client.direccion || '');
+              if (addrLower.includes(q)) score += 20;
+            }
 
-         if (supB === searchLower) scoreB += 1000;
-         else if (supB.startsWith(searchLower)) scoreB += 500;
-         else if (supB.includes(searchLower)) scoreB += 100;
+            if (searchSupplyCode) {
+              const q = normalizeSearchText(searchSupplyCode);
+              if (supLower === q) score += 2000;
+              else if (supLower.startsWith(q)) score += 1000;
+              else if (supLower.includes(q)) score += 200;
+            }
 
-         if (dniB === searchLower) scoreB += 800;
-         else if (dniB.startsWith(searchLower)) scoreB += 400;
-         else if (dniB.includes(searchLower)) scoreB += 80;
+            if (searchDniRuc) {
+              const q = normalizeSearchText(searchDniRuc);
+              if (dniLower === q) score += 1600;
+              else if (dniLower.startsWith(q)) score += 800;
+              else if (dniLower.includes(q)) score += 160;
+            }
 
-         if (nameB === searchLower) scoreB += 600;
-         else if (nameB.startsWith(searchLower)) scoreB += 300;
-         else if (nameB.includes(searchLower)) scoreB += 60;
+            if (searchName) {
+              const q = normalizeSearchText(searchName);
+              if (nameLower === q) score += 1200;
+              else if (nameLower.startsWith(q)) score += 600;
+              else if (nameLower.includes(q)) score += 120;
+            }
 
-         if (addrB.includes(searchLower)) scoreB += 20;
+            return score;
+          };
 
-         return scoreB - scoreA;
-       });
-     }
+          scoreA = calcScore(a);
+          scoreB = calcScore(b);
 
-     return supplies;
-  }, [searchedClients, consumptions, fines, settings, clientSearch]);
+          return scoreB - scoreA;
+        });
+      }
+
+      return supplies;
+  }, [searchedClients, consumptions, fines, settings, clientSearch, searchSupplyCode, searchDniRuc, searchName]);
 
   useEffect(() => {
     if (clientSearch && availableSupplies.length === 1 && availableSupplies[0].sup === clientSearch.trim()) {
@@ -1036,7 +1083,7 @@ export default function Finanzas() {
           <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
             <div className="fixed inset-0 bg-slate-900 bg-opacity-75 transition-opacity" onClick={closeModal}></div>
             <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-            <div className={`relative z-10 inline-block align-bottom bg-[#0B0E14] rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:w-full ${isModalOpen === 'APTOS_CORTE' ? 'sm:max-w-4xl' : isModalOpen === 'INGRESO' ? 'sm:max-w-3xl' : 'sm:max-w-md'}`}>
+            <div className={`relative z-10 inline-block align-bottom bg-[#0B0E14] rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:w-full ${isModalOpen === 'APTOS_CORTE' ? 'sm:max-w-4xl' : isModalOpen === 'INGRESO' ? 'sm:max-w-5xl' : 'sm:max-w-md'}`}>
               <form onSubmit={handleSubmit}>
                 <div className="bg-[#0B0E14] px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                   <h3 className="text-lg leading-6 font-medium text-slate-100 mb-4" id="modal-title">
@@ -1306,112 +1353,233 @@ export default function Finanzas() {
                         ) : (
                           /* Search Input & Wide Results Panel when no selection is active */
                           <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-1.5">Buscar Cliente o Suministro</label>
-                            <div className="relative flex gap-2">
-                              <div className="relative w-full">
-                                <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
-                                  <Search className="h-4 w-4" />
-                                </span>
-                                <input 
-                                  ref={searchInputRef}
-                                  type="text" 
-                                  placeholder="Busque por Código de Suministro, Nombre del Cliente, DNI/RUC o dirección..."
-                                  value={clientSearch}
-                                  onChange={(e) => {
-                                    setClientSearch(e.target.value);
+                            {/* Advanced Search Filters Panel */}
+                            <div className="bg-[#10141D] p-4 rounded-xl border border-slate-800 space-y-4 mb-4 shadow-inner">
+                              <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                                <div className="flex items-center gap-2 text-slate-200 font-semibold text-sm">
+                                  <Filter className="h-4 w-4 text-blue-400" />
+                                  <span>Panel de Búsqueda Avanzada de Suministros</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setClientSearch('');
+                                    setSearchSupplyCode('');
+                                    setSearchDniRuc('');
+                                    setSearchName('');
+                                    setShowOnlyAptForCut(false);
                                   }}
-                                  className="block w-full border border-slate-700 rounded-md shadow-sm py-2 pl-9 pr-3 focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-[#0B0E14] text-slate-100 placeholder-slate-400"
-                                />
+                                  className="text-xs text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700/80 px-2.5 py-1 rounded border border-slate-700/60"
+                                >
+                                  <RefreshCw className="h-3 w-3" />
+                                  Limpiar Filtros
+                                </button>
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => setShowOnlyAptForCut(!showOnlyAptForCut)}
-                                className={`flex px-3 py-2 text-sm font-medium rounded-md border items-center gap-2 transition-colors flex-shrink-0 ${showOnlyAptForCut ? 'bg-red-900/50 text-red-500 border-red-500/50' : 'bg-[#0B0E14] text-slate-400 border-slate-700 hover:text-slate-200'}`}
-                                title="Filtrar clientes con riesgo de corte"
-                              >
-                                <FileWarning className="h-4 w-4" />
-                                <span className="hidden sm:inline">Aptos para corte</span>
-                              </button>
+
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                {/* Código de Suministro */}
+                                <div>
+                                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Código de Suministro</label>
+                                  <div className="relative">
+                                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-500">
+                                      <CreditCard className="h-4 w-4" />
+                                    </span>
+                                    <input 
+                                      type="text" 
+                                      placeholder="Ej: SUM-001..."
+                                      value={searchSupplyCode}
+                                      onChange={(e) => setSearchSupplyCode(e.target.value)}
+                                      className="block w-full border border-slate-700 rounded-md py-2 pl-9 pr-3 focus:ring-blue-500 focus:border-blue-500 text-xs bg-[#0B0E14] text-slate-100 placeholder-slate-500"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* DNI / RUC */}
+                                <div>
+                                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">DNI o RUC del Titular</label>
+                                  <div className="relative">
+                                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-500">
+                                      <User className="h-4 w-4" />
+                                    </span>
+                                    <input 
+                                      type="text" 
+                                      placeholder="Ej: 71234567 o RUC..."
+                                      value={searchDniRuc}
+                                      onChange={(e) => setSearchDniRuc(e.target.value)}
+                                      className="block w-full border border-slate-700 rounded-md py-2 pl-9 pr-3 focus:ring-blue-500 focus:border-blue-500 text-xs bg-[#0B0E14] text-slate-100 placeholder-slate-500"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Nombres y Apellidos o Razón Social */}
+                                <div>
+                                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Nombre o Razón Social</label>
+                                  <div className="relative">
+                                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-500">
+                                      <Search className="h-4 w-4" />
+                                    </span>
+                                    <input 
+                                      type="text" 
+                                      placeholder="Ej: Juan Perez o Empresa SAC..."
+                                      value={searchName}
+                                      onChange={(e) => setSearchName(e.target.value)}
+                                      className="block w-full border border-slate-700 rounded-md py-2 pl-9 pr-3 focus:ring-blue-500 focus:border-blue-500 text-xs bg-[#0B0E14] text-slate-100 placeholder-slate-500"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-slate-800/40">
+                                {/* General text filter */}
+                                <div className="flex-1 min-w-[240px]">
+                                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Búsqueda Rápida General (Cualquier coincidencia)</label>
+                                  <div className="relative">
+                                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-500">
+                                      <Search className="h-3.5 w-3.5" />
+                                    </span>
+                                    <input 
+                                      ref={searchInputRef}
+                                      type="text" 
+                                      placeholder="Busque por dirección, referencia, medidor..."
+                                      value={clientSearch}
+                                      onChange={(e) => setClientSearch(e.target.value)}
+                                      className="block w-full border border-slate-700 rounded-md py-1.5 pl-9 pr-3 focus:ring-blue-500 focus:border-blue-500 text-xs bg-[#0B0E14] text-slate-100 placeholder-slate-500"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Aptos para corte checkbox / toggle button */}
+                                <div className="flex-shrink-0 pt-4">
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowOnlyAptForCut(!showOnlyAptForCut)}
+                                    className={`flex px-3 py-1.5 text-xs font-bold rounded-md border items-center gap-2 transition-colors ${showOnlyAptForCut ? 'bg-red-950/60 text-red-400 border-red-500/50' : 'bg-[#0B0E14] text-slate-400 border-slate-700 hover:text-slate-200'}`}
+                                    title="Filtrar clientes con riesgo de corte"
+                                  >
+                                    <FileWarning className="h-3.5 w-3.5" />
+                                    <span>Riesgo de Corte (3+ recibos)</span>
+                                  </button>
+                                </div>
+                              </div>
                             </div>
 
-                            {/* Wide visual search results table-like container */}
-                            <div className="mt-3 space-y-2 max-h-80 overflow-y-auto pr-1 border border-slate-800 rounded-lg p-2 bg-[#090C11]">
-                              <div className="text-xs font-semibold text-slate-400 px-2 pb-1.5 border-b border-slate-800/80 flex justify-between items-center">
-                                <span>Resultados Encontrados ({availableSupplies.length})</span>
-                                <span className="text-slate-500 text-[10px]">Haga clic en un suministro para seleccionarlo</span>
-                              </div>
-                              {availableSupplies.length > 0 ? (
-                                availableSupplies.slice(0, 30).map(s => {
-                                  const clientName = s.client.nombre ? s.client.nombre : `${s.client.nombres || ''} ${s.client.apellidos || ''}`;
-                                  return (
-                                    <div 
-                                      key={`${s.id}|${s.sup}`}
-                                      onClick={() => {
-                                        setSelectedClientId(s.id);
-                                        setSelectedSupplyCode(s.sup);
-                                        setClientSearch(s.label);
-                                      }}
-                                      className="p-3 rounded-lg border text-xs transition-all cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-3 bg-[#0B0E14] border-slate-800 hover:border-slate-700 hover:bg-slate-800/40"
-                                    >
-                                      <div className="flex-1 min-w-0 space-y-1">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                          <span className="font-bold text-blue-400 bg-blue-950/50 border border-blue-800/50 px-2 py-0.5 rounded text-[10px] uppercase tracking-wider">
-                                            {s.sup}
-                                          </span>
-                                          <span className="font-semibold text-slate-100 text-sm truncate">
-                                            {clientName}
-                                          </span>
-                                          <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase ${
-                                            s.client.tipo === 'SOCIO' ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-800/50' : 'bg-blue-950/40 text-blue-400 border border-blue-800/50'
-                                          }`}>
-                                            {s.client.tipo}
-                                          </span>
-                                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase ${
-                                            s.client.estado === 'ACTIVO' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
-                                          }`}>
-                                            <span className={`w-1 h-1 rounded-full ${s.client.estado === 'ACTIVO' ? 'bg-emerald-400' : 'bg-red-400'}`} />
-                                            {s.client.estado}
-                                          </span>
-                                        </div>
-                                        
-                                        <div className="flex flex-col sm:flex-row sm:items-center gap-x-4 text-slate-400 text-[11px] mt-1">
-                                          <div className="flex items-center gap-1">
-                                            <span className="text-slate-500">DNI/RUC:</span>
-                                            <span className="font-mono text-slate-300">{s.client.dni || '-'}</span>
-                                          </div>
-                                          <div className="flex items-center gap-1 truncate max-w-xs md:max-w-md">
-                                            <span className="text-slate-500">Dirección:</span>
-                                            <span className="text-slate-300 truncate" title={s.client.direccion}>
-                                              {s.client.direccion || '-'} {s.client.numeroDireccion || ''}
-                                            </span>
-                                          </div>
-                                        </div>
-                                      </div>
 
-                                      <div className="flex items-center justify-between md:justify-end gap-4 border-t md:border-t-0 pt-2 md:pt-0 border-slate-800/50">
-                                        <div className="text-right">
-                                          <div className="text-[9px] text-slate-500 uppercase font-medium">Saldo Pendiente</div>
-                                          <div className={`text-xs font-bold ${s.pendingBalance > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                                            {s.pendingBalance > 0 ? formatCurrency(s.pendingBalance) : 'Sin deuda'}
-                                          </div>
-                                        </div>
-                                        <Button 
-                                          type="button" 
-                                          size="sm" 
-                                          variant={s.pendingBalance > 0 ? 'default' : 'outline'}
-                                          className="h-8 py-1 px-3 text-xs font-bold"
-                                        >
-                                          Seleccionar
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  );
-                                })
-                              ) : (
-                                <div className="p-6 text-center text-slate-400 text-sm">
-                                  No se encontraron suministros que coincidan con la búsqueda.
-                                </div>
-                              )}
+
+                            {/* Wide visual search results tabular container */}
+                            <div className="mt-3 space-y-2">
+                              <div className="text-xs font-semibold text-slate-400 px-1 pb-1.5 flex justify-between items-center">
+                                <span className="flex items-center gap-2">
+                                  <span>Resultados Encontrados</span>
+                                  <span className="bg-slate-800 text-slate-300 font-bold px-2 py-0.5 rounded-full text-[10px]">
+                                    {availableSupplies.length}
+                                  </span>
+                                </span>
+                                <span className="text-slate-500 text-[10px]">Haga clic en una fila o en el botón para iniciar el cobro</span>
+                              </div>
+
+                              <div className="overflow-x-auto border border-slate-800 rounded-lg bg-[#090C11] max-h-80 overflow-y-auto">
+                                <table className="min-w-full divide-y divide-slate-800 text-left text-xs text-slate-300">
+                                  <thead className="bg-[#0B0F19] text-slate-400 uppercase font-bold text-[9px] tracking-wider sticky top-0 z-10 border-b border-slate-800">
+                                    <tr>
+                                      <th className="px-4 py-3 bg-[#0B0F19]">Suministro</th>
+                                      <th className="px-4 py-3 bg-[#0B0F19]">DNI/RUC</th>
+                                      <th className="px-4 py-3 bg-[#0B0F19]">Titular / Razón Social</th>
+                                      <th className="px-4 py-3 bg-[#0B0F19]">Dirección</th>
+                                      <th className="px-4 py-3 bg-[#0B0F19]">Tipo</th>
+                                      <th className="px-4 py-3 bg-[#0B0F19]">Estado</th>
+                                      <th className="px-4 py-3 bg-[#0B0F19] text-center">Meses Deuda</th>
+                                      <th className="px-4 py-3 bg-[#0B0F19] text-right">Saldo Pendiente</th>
+                                      <th className="px-4 py-3 bg-[#0B0F19] text-center">Acción</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-800/60 bg-[#0B0E14]">
+                                    {availableSupplies.length > 0 ? (
+                                      availableSupplies.slice(0, 30).map(s => {
+                                        const clientName = s.client.nombre ? s.client.nombre : `${s.client.nombres || ''} ${s.client.apellidos || ''}`;
+                                        return (
+                                          <tr 
+                                            key={`${s.id}|${s.sup}`}
+                                            className="hover:bg-slate-800/40 transition-colors cursor-pointer"
+                                            onClick={() => {
+                                              setSelectedClientId(s.id);
+                                              setSelectedSupplyCode(s.sup);
+                                              setClientSearch(s.label);
+                                            }}
+                                          >
+                                            {/* Suministro */}
+                                            <td className="px-4 py-3 font-bold text-blue-400 whitespace-nowrap">
+                                              {s.sup}
+                                            </td>
+                                            {/* DNI/RUC */}
+                                            <td className="px-4 py-3 font-mono text-slate-300 whitespace-nowrap">
+                                              {s.client.dni || '-'}
+                                            </td>
+                                            {/* Nombre / Razón Social */}
+                                            <td className="px-4 py-3 font-semibold text-slate-200 truncate max-w-[180px]" title={clientName}>
+                                              {clientName}
+                                            </td>
+                                            {/* Dirección */}
+                                            <td className="px-4 py-3 text-slate-400 truncate max-w-[200px]" title={`${s.client.direccion || ''} ${s.client.numeroDireccion || ''}`}>
+                                              {s.client.direccion || '-'} {s.client.numeroDireccion || ''}
+                                            </td>
+                                            {/* Tipo */}
+                                            <td className="px-4 py-3 whitespace-nowrap">
+                                              <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${
+                                                s.client.tipo === 'SOCIO' ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-800/30' : 'bg-blue-950/50 text-blue-400 border border-blue-800/30'
+                                              }`}>
+                                                {s.client.tipo}
+                                              </span>
+                                            </td>
+                                            {/* Estado */}
+                                            <td className="px-4 py-3 whitespace-nowrap">
+                                              <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold ${
+                                                s.client.estado === 'ACTIVO' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/10' : 'bg-red-500/10 text-red-400 border border-red-500/10'
+                                              }`}>
+                                                <span className={`w-1.5 h-1.5 rounded-full ${s.client.estado === 'ACTIVO' ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
+                                                {s.client.estado}
+                                              </span>
+                                            </td>
+                                            {/* Meses de deuda */}
+                                            <td className="px-4 py-3 text-center font-bold whitespace-nowrap">
+                                              <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${s.pendingMonthsCount > 0 ? 'bg-red-950/50 text-red-400 border-red-800/50' : 'bg-slate-900/50 text-slate-500 border-slate-800/50'}`}>
+                                                {s.pendingMonthsCount} {s.pendingMonthsCount === 1 ? 'mes' : 'meses'}
+                                              </span>
+                                            </td>
+                                            {/* Saldo pendiente */}
+                                            <td className="px-4 py-3 text-right font-bold whitespace-nowrap">
+                                              <span className={s.pendingBalance > 0 ? 'text-red-400 bg-red-950/20 px-2 py-1 rounded border border-red-900/30' : 'text-emerald-400 bg-emerald-950/20 px-2 py-1 rounded border border-emerald-900/30'}>
+                                                {formatCurrency(s.pendingBalance)}
+                                              </span>
+                                            </td>
+                                            {/* Acción */}
+                                            <td className="px-4 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                              <Button 
+                                                type="button" 
+                                                size="sm" 
+                                                variant={s.pendingBalance > 0 ? 'default' : 'outline'}
+                                                onClick={() => {
+                                                  setSelectedClientId(s.id);
+                                                  setSelectedSupplyCode(s.sup);
+                                                  setClientSearch(s.label);
+                                                }}
+                                                className="h-7 py-1 px-2.5 text-[11px] font-bold"
+                                              >
+                                                Cobrar
+                                              </Button>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })
+                                    ) : (
+                                      <tr>
+                                        <td colSpan={9} className="p-8 text-center text-slate-400 text-sm">
+                                          No se encontraron suministros que coincidan con la búsqueda. Intente combinar otros filtros.
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
                             </div>
                           </div>
                         )}
