@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { PlusCircle, Search, UserCheck, UserPlus, CreditCard, CheckCircle, Receipt, Download } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import { Button, Card, CardContent } from '../components/ui';
-import { normalizeSupplyCode, normalizeSearchText } from '../lib/utils';
+import { normalizeSupplyCode, normalizeSearchText, scoreClientSuppliesMatch } from '../lib/utils';
 import { Client, Transaction } from '../store/types';
 import { toast } from 'react-hot-toast';
 import { generateGeneralPaymentReceiptPDF } from '../lib/receipts';
@@ -217,7 +217,9 @@ export default function VentaServicios() {
     const filtered = clients.filter(c => {
       const fullname = `${c.nombres} ${c.apellidos}`;
       const legacyName = c.nombre || '';
+      const supScore = scoreClientSuppliesMatch(c.codigoSuministro, c.suministros, clientSearchQuery);
       return (
+        supScore > 0 ||
         normalizeSearchText(c.dni || '').includes(query) ||
         normalizeSearchText(c.nombres || '').includes(query) ||
         normalizeSearchText(c.apellidos || '').includes(query) ||
@@ -226,8 +228,13 @@ export default function VentaServicios() {
       );
     });
 
-    // Sort automatically ascending alphabetically by name
+    // Sort: prioritize highest supply code match score, then sort alphabetically by name
     return [...filtered].sort((a, b) => {
+      const scoreA = scoreClientSuppliesMatch(a.codigoSuministro, a.suministros, clientSearchQuery);
+      const scoreB = scoreClientSuppliesMatch(b.codigoSuministro, b.suministros, clientSearchQuery);
+      if (scoreA !== scoreB) {
+        return scoreB - scoreA;
+      }
       const nameA = (a.nombre || `${a.nombres || ''} ${a.apellidos || ''}`).trim();
       const nameB = (b.nombre || `${b.nombres || ''} ${b.apellidos || ''}`).trim();
       return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });

@@ -278,4 +278,70 @@ export function genericCompare<T>(
   return direction === 'asc' ? comparison : -comparison;
 }
 
+export function extractSequentialNumber(s: string): number | null {
+  if (!s) return null;
+  const match = s.trim().match(/(?:SUM-)?0*([1-9]\d*|0)$/i);
+  if (match) {
+    return parseInt(match[1], 10);
+  }
+  return null;
+}
+
+export function scoreSupplyCodeMatch(targetCode: string, searchQuery: string): number {
+  if (!searchQuery) return 0;
+  
+  const targetNorm = targetCode.trim().toUpperCase();
+  const queryNorm = searchQuery.trim().toUpperCase();
+  
+  if (!targetNorm) return 0;
+
+  // 1. Exact Match of full string
+  if (targetNorm === queryNorm) {
+    return 100;
+  }
+
+  // 2. Exact Match of sequential numbers
+  const targetSeq = extractSequentialNumber(targetNorm);
+  const querySeq = extractSequentialNumber(queryNorm);
+  if (targetSeq !== null && querySeq !== null && targetSeq === querySeq) {
+    return 90;
+  }
+
+  // 3. Starts with match (e.g., "SUM-0" starts "SUM-002")
+  // Or if targetCode without prefix starts with queryNorm without prefix
+  const targetClean = targetNorm.startsWith('SUM-') ? targetNorm.substring(4) : targetNorm;
+  const queryClean = queryNorm.startsWith('SUM-') ? queryNorm.substring(4) : queryNorm;
+
+  if (targetNorm.startsWith(queryNorm) || (targetClean && queryClean && targetClean.startsWith(queryClean))) {
+    return 50;
+  }
+
+  // 4. Partial/Contains Match
+  if (targetNorm.includes(queryNorm) || (targetClean && queryClean && targetClean.includes(queryClean))) {
+    return 10;
+  }
+
+  return 0;
+}
+
+export function scoreClientSuppliesMatch(
+  codigoSuministro: string | undefined,
+  suministros: string[] | undefined,
+  searchQuery: string
+): number {
+  if (!searchQuery) return 1; // Default match if no search query
+  const codes = [codigoSuministro, ...(suministros || [])].filter(Boolean) as string[];
+  if (codes.length === 0) return 0;
+  
+  let maxScore = 0;
+  for (const code of codes) {
+    const score = scoreSupplyCodeMatch(code, searchQuery);
+    if (score > maxScore) {
+      maxScore = score;
+    }
+  }
+  return maxScore;
+}
+
+
 

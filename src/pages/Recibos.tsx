@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAppContext } from '../store/AppContext';
 import { Card, CardContent, Badge, Button, Pagination } from '../components/ui';
-import { formatCurrency, normalizeSearchText, getExonerationClassification } from '../lib/utils';
+import { formatCurrency, normalizeSearchText, getExonerationClassification, scoreSupplyCodeMatch } from '../lib/utils';
 import { generateGeneralPaymentReceiptPDF, generatePayrollReceiptPDF, generateConsumptionTicketPDF } from '../lib/receipts';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -339,7 +339,7 @@ export default function Recibos() {
       const invoiceNo = normalizeSearchText(item.comprobanteNo);
       const clientName = normalizeSearchText(item.clientName);
       const dni = normalizeSearchText(item.clientDni);
-      const supply = normalizeSearchText(item.codigoSuministro);
+      const supScore = scoreSupplyCodeMatch(item.codigoSuministro || '', searchTerm);
       const address = normalizeSearchText(item.clientDireccion);
       const meter = normalizeSearchText(item.clientMedidor);
       const concept = normalizeSearchText(item.concepto);
@@ -360,7 +360,7 @@ export default function Recibos() {
         invoiceNo.includes(searchNormalized) ||
         clientName.includes(searchNormalized) ||
         dni.includes(searchNormalized) ||
-        supply.includes(searchNormalized) ||
+        supScore > 0 ||
         address.includes(searchNormalized) ||
         meter.includes(searchNormalized) ||
         concept.includes(searchNormalized) ||
@@ -412,6 +412,18 @@ export default function Recibos() {
 
     return true;
   });
+
+  // If searchTerm is provided, prioritize results by supply code match score
+  if (searchTerm) {
+    filteredReceipts.sort((a, b) => {
+      const scoreA = scoreSupplyCodeMatch(a.codigoSuministro || '', searchTerm);
+      const scoreB = scoreSupplyCodeMatch(b.codigoSuministro || '', searchTerm);
+      if (scoreA !== scoreB) {
+        return scoreB - scoreA;
+      }
+      return 0; // maintain original date sorting order for identical scores
+    });
+  }
 
   // Extract unique creator/operator users for advanced filtering dropdown list
   const creatorsSet = new Set<string>();

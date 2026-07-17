@@ -5,7 +5,7 @@ import { useAppContext } from '../store/AppContext';
 import { Button, Card, CardContent, Badge, Pagination } from '../components/ui';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { Client, ClientType } from '../store/types';
-import { normalizeSearchText, normalizeSupplyCode, genericCompare } from '../lib/utils';
+import { normalizeSearchText, normalizeSupplyCode, genericCompare, scoreClientSuppliesMatch } from '../lib/utils';
 import * as XLSX from 'xlsx';
 import { toast } from 'react-hot-toast';
 import { generateGeneralPaymentReceiptPDF } from '../lib/receipts';
@@ -158,9 +158,8 @@ export default function Clientes() {
     return clients.filter(c => {
       // 1. Search Supply Code
       if (searchSupplyCode) {
-        const normSearch = normalizeSearchText(searchSupplyCode);
-        const allSupplies = normalizeSearchText([c.codigoSuministro || '', ...(c.suministros || [])].join(' '));
-        if (!allSupplies.includes(normSearch)) return false;
+        const score = scoreClientSuppliesMatch(c.codigoSuministro, c.suministros, searchSupplyCode);
+        if (score === 0) return false;
       }
 
       // 2. Search DNI/RUC
@@ -211,6 +210,14 @@ export default function Clientes() {
 
   const sortedClients = useMemo(() => {
     return [...filteredClients].sort((a, b) => {
+      if (searchSupplyCode) {
+        const scoreA = scoreClientSuppliesMatch(a.codigoSuministro, a.suministros, searchSupplyCode);
+        const scoreB = scoreClientSuppliesMatch(b.codigoSuministro, b.suministros, searchSupplyCode);
+        if (scoreA !== scoreB) {
+          return scoreB - scoreA;
+        }
+      }
+
       if (sortField === 'nombre') {
         const nameA = a.nombre ? a.nombre : `${a.nombres || ''} ${a.apellidos || ''}`.trim();
         const nameB = b.nombre ? b.nombre : `${b.nombres || ''} ${b.apellidos || ''}`.trim();
@@ -237,7 +244,7 @@ export default function Clientes() {
       }
       return genericCompare(a, b, sortField, sortDirection);
     });
-  }, [filteredClients, sortField, sortDirection, suppliesInfo, meetings]);
+  }, [filteredClients, sortField, sortDirection, suppliesInfo, meetings, searchSupplyCode]);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(20);

@@ -3,7 +3,7 @@ import { Plus, ArrowUpRight, ArrowDownRight, Filter, Download, FileText, FileWar
 import { useAppContext } from '../store/AppContext';
 import { Button, Card, CardContent, Badge, CardHeader, CardTitle, Pagination } from '../components/ui';
 import { useConfirm } from '../components/ui/ConfirmDialog';
-import { formatCurrency, render3DPieChartToDataURL, normalizeSearchText } from '../lib/utils';
+import { formatCurrency, render3DPieChartToDataURL, normalizeSearchText, scoreSupplyCodeMatch, scoreClientSuppliesMatch } from '../lib/utils';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { jsPDF } from 'jspdf';
@@ -729,10 +729,9 @@ export default function Finanzas() {
       const fullName = normalizeSearchText(rawFullName);
       const dni = normalizeSearchText(c.dni || '');
       const address = normalizeSearchText(c.direccion || '');
-      const clientSupplies = c.suministros?.length ? c.suministros : [c.codigoSuministro];
-      const allSuppliesStr = normalizeSearchText(clientSupplies.join(' '));
+      const supScore = scoreClientSuppliesMatch(c.codigoSuministro, c.suministros, clientSearch);
       
-      const itemMatch = allSuppliesStr.includes(searchNormalized) ||
+      const itemMatch = supScore > 0 ||
                         dni.includes(searchNormalized) ||
                         fullName.includes(searchNormalized) ||
                         address.includes(searchNormalized);
@@ -740,10 +739,8 @@ export default function Finanzas() {
     }
 
     if (searchSupplyCode) {
-      const searchNormalized = normalizeSearchText(searchSupplyCode);
-      const clientSupplies = c.suministros?.length ? c.suministros : [c.codigoSuministro];
-      const allSuppliesStr = normalizeSearchText(clientSupplies.join(' '));
-      if (!allSuppliesStr.includes(searchNormalized)) matches = false;
+      const supScore = scoreClientSuppliesMatch(c.codigoSuministro, c.suministros, searchSupplyCode);
+      if (supScore === 0) matches = false;
     }
 
     if (searchDniRuc) {
@@ -807,34 +804,32 @@ export default function Finanzas() {
 
           const calcScore = (item: typeof a) => {
             let score = 0;
-            const supLower = normalizeSearchText(item.sup);
             const dniLower = normalizeSearchText(item.client.dni || '');
             const rawName = item.client.nombre ? item.client.nombre : `${item.client.nombres || ''} ${item.client.apellidos || ''}`;
             const nameLower = normalizeSearchText(rawName);
             const addrLower = normalizeSearchText(item.client.direccion || '');
 
             if (clientSearch) {
-              const q = normalizeSearchText(clientSearch);
-              if (supLower === q) score += 1000;
-              else if (supLower.startsWith(q)) score += 500;
-              else if (supLower.includes(q)) score += 100;
+              const q = clientSearch;
+              const qNorm = normalizeSearchText(clientSearch);
+              const supScore = scoreSupplyCodeMatch(item.sup, q);
+              score += supScore * 10;
 
-              if (dniLower === q) score += 800;
-              else if (dniLower.startsWith(q)) score += 400;
-              else if (dniLower.includes(q)) score += 80;
+              if (dniLower === qNorm) score += 800;
+              else if (dniLower.startsWith(qNorm)) score += 400;
+              else if (dniLower.includes(qNorm)) score += 80;
 
-              if (nameLower === q) score += 600;
-              else if (nameLower.startsWith(q)) score += 300;
-              else if (nameLower.includes(q)) score += 60;
+              if (nameLower === qNorm) score += 600;
+              else if (nameLower.startsWith(qNorm)) score += 300;
+              else if (nameLower.includes(qNorm)) score += 60;
 
-              if (addrLower.includes(q)) score += 20;
+              if (addrLower.includes(qNorm)) score += 20;
             }
 
             if (searchSupplyCode) {
-              const q = normalizeSearchText(searchSupplyCode);
-              if (supLower === q) score += 2000;
-              else if (supLower.startsWith(q)) score += 1000;
-              else if (supLower.includes(q)) score += 200;
+              const q = searchSupplyCode;
+              const supScore = scoreSupplyCodeMatch(item.sup, q);
+              score += supScore * 20;
             }
 
             if (searchDniRuc) {

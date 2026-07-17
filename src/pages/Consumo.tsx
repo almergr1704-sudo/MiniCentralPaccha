@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Plus, Check, FileText, Download, Upload, AlertCircle, Zap, Receipt, Camera, Edit2, X, Eye, Filter, Search, RefreshCw, SlidersHorizontal, ChevronRight } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import { Button, Card, CardContent, Badge, Pagination } from '../components/ui';
-import { formatCurrency, normalizeSearchText, getExonerationClassification, genericCompare } from '../lib/utils';
+import { formatCurrency, normalizeSearchText, getExonerationClassification, genericCompare, scoreSupplyCodeMatch } from '../lib/utils';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -965,6 +965,15 @@ export default function Consumo() {
       const clientA = clients.find(cl => cl.id === a.clientId);
       const clientB = clients.find(cl => cl.id === b.clientId);
 
+      // Prioritize intelligent supply code match score if a query is present
+      if (query) {
+        const scoreA = scoreSupplyCodeMatch(a.codigoSuministro || '', query);
+        const scoreB = scoreSupplyCodeMatch(b.codigoSuministro || '', query);
+        if (scoreA !== scoreB) {
+          return scoreB - scoreA;
+        }
+      }
+
       if (consumoSortField === 'cliente') {
         const nameA = clientA ? (clientA.nombre ? clientA.nombre : `${clientA.nombres || ''} ${clientA.apellidos || ''}`) : '';
         const nameB = clientB ? (clientB.nombre ? clientB.nombre : `${clientB.nombres || ''} ${clientB.apellidos || ''}`) : '';
@@ -1050,9 +1059,9 @@ export default function Consumo() {
       const rawFullName = client.nombre ? client.nombre : `${client.nombres || ''} ${client.apellidos || ''}`;
       const fullName = normalizeSearchText(rawFullName);
       const dni = normalizeSearchText(client.dni || '');
-      const suministro = normalizeSearchText(c.codigoSuministro || '');
+      const supScore = scoreSupplyCodeMatch(c.codigoSuministro || '', tableSearch);
 
-      return suministro.includes(searchNormalized) ||
+      return supScore > 0 ||
              dni.includes(searchNormalized) ||
              fullName.includes(searchNormalized);
     });
@@ -1070,9 +1079,9 @@ export default function Consumo() {
       const rawFullName = client.nombre ? client.nombre : `${client.nombres || ''} ${client.apellidos || ''}`;
       const fullName = normalizeSearchText(rawFullName);
       const dni = normalizeSearchText(client.dni || '');
-      const suministro = normalizeSearchText(c.codigoSuministro || '');
+      const supScore = scoreSupplyCodeMatch(c.codigoSuministro || '', tableSearch);
       
-      return suministro.includes(searchNormalized) ||
+      return supScore > 0 ||
              dni.includes(searchNormalized) ||
              fullName.includes(searchNormalized);
     });
@@ -1105,9 +1114,8 @@ export default function Consumo() {
 
         // Apply filters
         if (searchSupplyCode) {
-          const normalizedSup = normalizeSearchText(sup);
-          const normalizedQuery = normalizeSearchText(searchSupplyCode);
-          if (!normalizedSup.includes(normalizedQuery)) return;
+          const score = scoreSupplyCodeMatch(sup, searchSupplyCode);
+          if (score === 0) return;
         }
 
         if (searchDniRuc) {
@@ -1127,12 +1135,12 @@ export default function Consumo() {
 
         if (clientSearch && !formData.clientAndSuministro) {
           const normalizedGeneral = normalizeSearchText(clientSearch);
-          const normalizedSup = normalizeSearchText(sup);
+          const supScore = scoreSupplyCodeMatch(sup, clientSearch);
           const normalizedDni = normalizeSearchText(c.dni || '');
           const normalizedName = normalizeSearchText(fullName);
           const normalizedDir = normalizeSearchText(currentDireccion);
 
-          const match = normalizedSup.includes(normalizedGeneral) ||
+          const match = supScore > 0 ||
                         normalizedDni.includes(normalizedGeneral) ||
                         normalizedName.includes(normalizedGeneral) ||
                         normalizedDir.includes(normalizedGeneral);
@@ -1197,6 +1205,16 @@ export default function Consumo() {
     }
 
     supplies.sort((a, b) => {
+      // Prioritize intelligent supply code match score if searching by supply
+      const query = searchSupplyCode || (clientSearch && activeSortType === 'SUPPLY' ? clientSearch : '');
+      if (query) {
+        const scoreA = scoreSupplyCodeMatch(a.sup, query);
+        const scoreB = scoreSupplyCodeMatch(b.sup, query);
+        if (scoreA !== scoreB) {
+          return scoreB - scoreA;
+        }
+      }
+
       if (supplySortField === 'suministro') {
         return genericCompare(a, b, 'sup', supplySortDirection);
       }

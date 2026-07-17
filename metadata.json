@@ -2,5 +2,7 @@
   "name": "MiniHydro PACCHA",
   "description": "Sistema MVP para control administrativo, financiero y de clientes de una central hidroeléctrica.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
