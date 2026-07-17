@@ -214,7 +214,7 @@ export default function VentaServicios() {
   const filteredClients = useMemo(() => {
     if (!clientSearchQuery.trim()) return [];
     const query = normalizeSearchText(clientSearchQuery);
-    return clients.filter(c => {
+    const filtered = clients.filter(c => {
       const fullname = `${c.nombres} ${c.apellidos}`;
       const legacyName = c.nombre || '';
       return (
@@ -224,6 +224,13 @@ export default function VentaServicios() {
         normalizeSearchText(fullname).includes(query) ||
         normalizeSearchText(legacyName).includes(query)
       );
+    });
+
+    // Sort automatically ascending alphabetically by name
+    return [...filtered].sort((a, b) => {
+      const nameA = (a.nombre || `${a.nombres || ''} ${a.apellidos || ''}`).trim();
+      const nameB = (b.nombre || `${b.nombres || ''} ${b.apellidos || ''}`).trim();
+      return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
     });
   }, [clients, clientSearchQuery]);
 

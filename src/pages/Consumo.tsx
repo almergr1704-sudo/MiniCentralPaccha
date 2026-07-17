@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Plus, Check, FileText, Download, Upload, AlertCircle, Zap, Receipt, Camera, Edit2, X, Eye, Filter, Search, RefreshCw, SlidersHorizontal, ChevronRight } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import { Button, Card, CardContent, Badge, Pagination } from '../components/ui';
-import { formatCurrency, normalizeSearchText, getExonerationClassification } from '../lib/utils';
+import { formatCurrency, normalizeSearchText, getExonerationClassification, genericCompare } from '../lib/utils';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -933,20 +933,73 @@ export default function Consumo() {
 
   const [activeTab, setActiveTab] = useState<'LECTURAS' | 'DEUDAS'>('LECTURAS');
 
+  const [consumoSortField, setConsumoSortField] = useState<string>('cliente');
+  const [consumoSortDirection, setConsumoSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  const [supplySortField, setSupplySortField] = useState<string>('suministro');
+  const [supplySortDirection, setSupplySortDirection] = useState<'asc' | 'desc'>('asc');
+
+  const handleSupplySort = (field: string) => {
+    if (supplySortField === field) {
+      setSupplySortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSupplySortField(field);
+      setSupplySortDirection('asc');
+    }
+  };
+
+  const renderSupplySortIndicator = (field: string) => {
+    if (supplySortField !== field) return null;
+    return supplySortDirection === 'asc' ? ' ▲' : ' ▼';
+  };
+
+  // Reset supply sorting state on filter changes
+  useEffect(() => {
+    setSupplySortDirection('asc');
+  }, [searchSupplyCode, searchDniRuc, searchName, clientSearch, selectedMes]);
+
+
   // Helper to dynamically sort consumption results based on the search criteria
   const sortConsumptionsBySearch = (list: typeof consumptions, query: string) => {
-    if (!query) {
-      // Keep default sorting (newest first)
-      return [...list].sort((a,b) => new Date(b.fechaLectura).getTime() - new Date(a.fechaLectura).getTime());
-    }
-    
-    const trimmed = query.trim().toLowerCase();
-    const isDniRuc = /^\d+$/.test(trimmed) || (trimmed.replace(/\D/g, '').length > trimmed.length / 2 && trimmed.length >= 6);
-    const isSupply = trimmed.startsWith('sum') || (!trimmed.includes(' ') && /[a-z]/.test(trimmed) && /[0-9]/.test(trimmed));
-    
     return [...list].sort((a, b) => {
       const clientA = clients.find(cl => cl.id === a.clientId);
       const clientB = clients.find(cl => cl.id === b.clientId);
+
+      if (consumoSortField === 'cliente') {
+        const nameA = clientA ? (clientA.nombre ? clientA.nombre : `${clientA.nombres || ''} ${clientA.apellidos || ''}`) : '';
+        const nameB = clientB ? (clientB.nombre ? clientB.nombre : `${clientB.nombres || ''} ${clientB.apellidos || ''}`) : '';
+        return genericCompare({ ...a, fullName: nameA }, { ...b, fullName: nameB }, 'fullName', consumoSortDirection);
+      }
+      if (consumoSortField === 'suministro') {
+        const supA = a.codigoSuministro || clientA?.codigoSuministro || '';
+        const supB = b.codigoSuministro || clientB?.codigoSuministro || '';
+        return genericCompare({ ...a, sup: supA }, { ...b, sup: supB }, 'sup', consumoSortDirection);
+      }
+      if (consumoSortField === 'dni') {
+        const dniA = clientA?.dni || '';
+        const dniB = clientB?.dni || '';
+        return genericCompare({ ...a, dni: dniA }, { ...b, dni: dniB }, 'dni', consumoSortDirection);
+      }
+      if (consumoSortField === 'consumo') {
+        return genericCompare(a, b, 'kwh', consumoSortDirection);
+      }
+      if (consumoSortField === 'monto') {
+        return genericCompare(a, b, 'montoTotal', consumoSortDirection);
+      }
+      if (consumoSortField === 'estado') {
+        return genericCompare(a, b, 'estadoPago', consumoSortDirection);
+      }
+      if (consumoSortField === 'fecha') {
+        return genericCompare(a, b, 'fechaLectura', consumoSortDirection);
+      }
+      
+      if (!query) {
+        return new Date(b.fechaLectura).getTime() - new Date(a.fechaLectura).getTime();
+      }
+      
+      const trimmed = query.trim().toLowerCase();
+      const isDniRuc = /^\d+$/.test(trimmed) || (trimmed.replace(/\D/g, '').length > trimmed.length / 2 && trimmed.length >= 6);
+      const isSupply = trimmed.startsWith('sum') || (!trimmed.includes(' ') && /[a-z]/.test(trimmed) && /[0-9]/.test(trimmed));
       
       if (isDniRuc) {
         const dniA = clientA?.dni || '';
@@ -957,7 +1010,6 @@ export default function Consumo() {
         const supB = b.codigoSuministro || clientB?.codigoSuministro || '';
         return supA.localeCompare(supB, undefined, { numeric: true, sensitivity: 'base' });
       } else {
-        // Name / Surname / Razon Social
         const nameA = clientA ? (clientA.nombre ? clientA.nombre : `${clientA.nombres || ''} ${clientA.apellidos || ''}`) : '';
         const nameB = clientB ? (clientB.nombre ? clientB.nombre : `${clientB.nombres || ''} ${clientB.apellidos || ''}`) : '';
         return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
@@ -965,8 +1017,27 @@ export default function Consumo() {
     });
   };
 
+  const handleConsumoSort = (field: string) => {
+    if (consumoSortField === field) {
+      setConsumoSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setConsumoSortField(field);
+      setConsumoSortDirection('asc');
+    }
+  };
+
+  const renderConsumoSortIndicator = (field: string) => {
+    if (consumoSortField !== field) return null;
+    return consumoSortDirection === 'asc' ? ' ▲' : ' ▼';
+  };
+
   // Filter consumptions by selected month
   const [tableSearch, setTableSearch] = useState('');
+
+  // Reset sorting state to ascending on new search/tab changes
+  useEffect(() => {
+    setConsumoSortDirection('asc');
+  }, [tableSearch, selectedMes, activeTab]);
 
   const filteredConsumptions = React.useMemo(() => {
     const rawList = consumptions.filter(c => {
@@ -1126,6 +1197,38 @@ export default function Consumo() {
     }
 
     supplies.sort((a, b) => {
+      if (supplySortField === 'suministro') {
+        return genericCompare(a, b, 'sup', supplySortDirection);
+      }
+      if (supplySortField === 'dni') {
+        const dniA = a.client.dni || '';
+        const dniB = b.client.dni || '';
+        return genericCompare({ ...a, dni: dniA }, { ...b, dni: dniB }, 'dni', supplySortDirection);
+      }
+      if (supplySortField === 'name') {
+        const nameA = a.client.nombre ? a.client.nombre : `${a.client.nombres || ''} ${a.client.apellidos || ''}`;
+        const nameB = b.client.nombre ? b.client.nombre : `${b.client.nombres || ''} ${b.client.apellidos || ''}`;
+        return genericCompare({ ...a, fullName: nameA }, { ...b, fullName: nameB }, 'fullName', supplySortDirection);
+      }
+      if (supplySortField === 'direccion') {
+        const dirA = a.client.direccion || '';
+        const dirB = b.client.direccion || '';
+        return genericCompare({ ...a, dir: dirA }, { ...b, dir: dirB }, 'dir', supplySortDirection);
+      }
+      if (supplySortField === 'tipo') {
+        return genericCompare(a, b, (item) => item.client.tipo, supplySortDirection);
+      }
+      if (supplySortField === 'estado') {
+        return genericCompare(a, b, (item) => item.client.estado, supplySortDirection);
+      }
+      if (supplySortField === 'lecturaAnterior') {
+        return genericCompare(a, b, 'lecturaAnterior', supplySortDirection);
+      }
+      if (supplySortField === 'readingStatus') {
+        return genericCompare(a, b, 'readingStatus', supplySortDirection);
+      }
+
+      // Default fallback
       if (activeSortType === 'DNI') {
         const dniA = a.client.dni || '';
         const dniB = b.client.dni || '';
@@ -1135,13 +1238,12 @@ export default function Consumo() {
         const nameB = b.client.nombre ? b.client.nombre : `${b.client.nombres || ''} ${b.client.apellidos || ''}`;
         return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
       } else {
-        // SUPPLY (correlative ascending order)
         return a.sup.localeCompare(b.sup, undefined, { numeric: true, sensitivity: 'base' });
       }
     });
 
     return supplies;
-  }, [clients, consumptions, searchSupplyCode, searchDniRuc, searchName, clientSearch, selectedMes, formData.clientAndSuministro]);
+  }, [clients, consumptions, searchSupplyCode, searchDniRuc, searchName, clientSearch, selectedMes, formData.clientAndSuministro, supplySortField, supplySortDirection]);
 
   useEffect(() => {
     if (clientSearch && availableSupplies.length === 1 && availableSupplies[0].sup === clientSearch.trim()) {
@@ -1319,11 +1421,34 @@ export default function Consumo() {
             <table className="w-full table-fixed min-w-[900px] md:min-w-full divide-y divide-slate-800">
               <thead>
                 <tr className="bg-slate-900 border-b border-slate-800">
-                  <th scope="col" className="sticky top-0 z-10 bg-slate-900 px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[24%] min-w-[180px]">Cliente</th>
-                  <th scope="col" className="sticky top-0 z-10 bg-slate-900 px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[15%] min-w-[120px]">Consumo</th>
-                  <th scope="col" className="sticky top-0 z-10 bg-slate-900 px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[13%] min-w-[110px]">Monto Calculado</th>
-                  <th scope="col" className="sticky top-0 z-10 bg-slate-900 px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[14%] min-w-[110px]">Observación</th>
-                  <th scope="col" className="sticky top-0 z-10 bg-slate-900 px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[10%] min-w-[80px]">Estado</th>
+                  <th scope="col" className="sticky top-0 z-10 bg-slate-900 px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[24%] min-w-[180px]">
+                    <div className="flex flex-col gap-1">
+                      <span>Cliente / Suministro</span>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        <button type="button" onClick={() => handleConsumoSort('cliente')} className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${consumoSortField === 'cliente' ? 'bg-blue-600 text-white border border-blue-500' : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'}`}>
+                          NOM{renderConsumoSortIndicator('cliente')}
+                        </button>
+                        <button type="button" onClick={() => handleConsumoSort('suministro')} className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${consumoSortField === 'suministro' ? 'bg-blue-600 text-white border border-blue-500' : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'}`}>
+                          SUM{renderConsumoSortIndicator('suministro')}
+                        </button>
+                        <button type="button" onClick={() => handleConsumoSort('dni')} className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${consumoSortField === 'dni' ? 'bg-blue-600 text-white border border-blue-500' : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'}`}>
+                          DNI{renderConsumoSortIndicator('dni')}
+                        </button>
+                      </div>
+                    </div>
+                  </th>
+                  <th scope="col" onClick={() => handleConsumoSort('consumo')} className="sticky top-0 z-10 bg-slate-900 px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[15%] min-w-[120px] cursor-pointer hover:bg-slate-800 hover:text-white select-none transition-colors">
+                    Consumo {renderConsumoSortIndicator('consumo')}
+                  </th>
+                  <th scope="col" onClick={() => handleConsumoSort('monto')} className="sticky top-0 z-10 bg-slate-900 px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[13%] min-w-[110px] cursor-pointer hover:bg-slate-800 hover:text-white select-none transition-colors">
+                    Monto {renderConsumoSortIndicator('monto')}
+                  </th>
+                  <th scope="col" onClick={() => handleConsumoSort('fecha')} className="sticky top-0 z-10 bg-slate-900 px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[14%] min-w-[110px] cursor-pointer hover:bg-slate-800 hover:text-white select-none transition-colors">
+                    Lectura/Fecha {renderConsumoSortIndicator('fecha')}
+                  </th>
+                  <th scope="col" onClick={() => handleConsumoSort('estado')} className="sticky top-0 z-10 bg-slate-900 px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[10%] min-w-[80px] cursor-pointer hover:bg-slate-800 hover:text-white select-none transition-colors">
+                    Estado {renderConsumoSortIndicator('estado')}
+                  </th>
                   <th scope="col" className="sticky top-0 z-10 bg-slate-900 px-4 py-3 text-right text-xs font-bold text-slate-300 uppercase tracking-wider w-[24%] min-w-[180px]">Acciones</th>
                 </tr>
               </thead>
@@ -1543,15 +1668,15 @@ export default function Consumo() {
                         <table className="w-full table-fixed divide-y divide-slate-800 text-left text-xs text-slate-300">
                           <thead className="bg-[#0B0F19] text-slate-400 uppercase font-bold text-[9px] tracking-wider sticky top-0 z-10 border-b border-slate-800">
                             <tr>
-                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[9%]">Suministro</th>
-                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[9%]">DNI/RUC</th>
-                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[23%]">Titular / Razón Social</th>
-                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[18%]">Dirección</th>
-                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[6%]">Tipo</th>
-                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[7%]">Estado</th>
-                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-right text-xs font-bold text-slate-300 uppercase tracking-wider w-[8%]">Lectura Anterior</th>
+                              <th scope="col" onClick={() => handleSupplySort('suministro')} className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[9%] cursor-pointer hover:bg-slate-800 hover:text-white select-none transition-colors">Suministro {renderSupplySortIndicator('suministro')}</th>
+                              <th scope="col" onClick={() => handleSupplySort('dni')} className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[9%] cursor-pointer hover:bg-slate-800 hover:text-white select-none transition-colors">DNI/RUC {renderSupplySortIndicator('dni')}</th>
+                              <th scope="col" onClick={() => handleSupplySort('name')} className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[23%] cursor-pointer hover:bg-slate-800 hover:text-white select-none transition-colors">Titular / Razón Social {renderSupplySortIndicator('name')}</th>
+                              <th scope="col" onClick={() => handleSupplySort('direccion')} className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[18%] cursor-pointer hover:bg-slate-800 hover:text-white select-none transition-colors">Dirección {renderSupplySortIndicator('direccion')}</th>
+                              <th scope="col" onClick={() => handleSupplySort('tipo')} className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[6%] cursor-pointer hover:bg-slate-800 hover:text-white select-none transition-colors">Tipo {renderSupplySortIndicator('tipo')}</th>
+                              <th scope="col" onClick={() => handleSupplySort('estado')} className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[7%] cursor-pointer hover:bg-slate-800 hover:text-white select-none transition-colors">Estado {renderSupplySortIndicator('estado')}</th>
+                              <th scope="col" onClick={() => handleSupplySort('lecturaAnterior')} className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-right text-xs font-bold text-slate-300 uppercase tracking-wider w-[8%] cursor-pointer hover:bg-slate-800 hover:text-white select-none transition-colors font-mono">Lect. Anterior {renderSupplySortIndicator('lecturaAnterior')}</th>
                               <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-left text-xs font-bold text-slate-300 uppercase tracking-wider w-[8%]">Última Lectura</th>
-                              <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-center text-xs font-bold text-slate-300 uppercase tracking-wider w-[11%]">Estado {selectedMes}</th>
+                              <th scope="col" onClick={() => handleSupplySort('readingStatus')} className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-center text-xs font-bold text-slate-300 uppercase tracking-wider w-[11%] cursor-pointer hover:bg-slate-800 hover:text-white select-none transition-colors">Estado {selectedMes} {renderSupplySortIndicator('readingStatus')}</th>
                               <th scope="col" className="sticky top-0 z-10 bg-[#0B0F19] px-4 py-3 text-center text-xs font-bold text-slate-300 uppercase tracking-wider w-[11%]">Acción</th>
                             </tr>
                           </thead>

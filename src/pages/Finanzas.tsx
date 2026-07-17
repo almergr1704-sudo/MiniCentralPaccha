@@ -691,7 +691,12 @@ export default function Finanzas() {
   const filteredTransactions = transactions
     .filter(t => filterType === 'TODOS' || t.tipo === filterType)
     .filter(t => selectedMes ? t.fecha.startsWith(selectedMes) : true)
-    .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+    .sort((a, b) => {
+      if (selectedMes) {
+        return new Date(a.fecha).getTime() - new Date(b.fecha).getTime();
+      }
+      return new Date(b.fecha).getTime() - new Date(a.fecha).getTime();
+    });
 
   const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
   const currentTransactions = filteredTransactions.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -864,8 +869,14 @@ export default function Finanzas() {
        setSelectedClientId(availableSupplies[0].id);
        setSelectedSupplyCode(availableSupplies[0].sup);
        setShowSuministroDropdown(false);
-    }
+     }
   }, [clientSearch, availableSupplies]);
+
+  // Reset worker sorting to ascending when worker search inputs change
+  useEffect(() => {
+    setWorkerCurrentPage(1);
+    setWorkerSortDirection('asc');
+  }, [workerSearchDni, workerSearchName]);
 
   const pendingConsumptions = consumptions.filter(c => c.clientId === selectedClientId && (!selectedSupplyCode || c.codigoSuministro === selectedSupplyCode) && c.estadoPago === 'PENDIENTE');
   const pendingFines = (fines || []).filter(c => c.clientId === selectedClientId && c.estadoPago === 'PENDIENTE');

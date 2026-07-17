@@ -216,3 +216,66 @@ export function getExonerationClassification(
   return 'NORMAL';
 }
 
+export function genericCompare<T>(
+  a: T,
+  b: T,
+  keyOrResolver: string | ((item: T) => any),
+  direction: 'asc' | 'desc' = 'asc'
+): number {
+  let valA = typeof keyOrResolver === 'function' ? keyOrResolver(a) : (a as any)[keyOrResolver];
+  let valB = typeof keyOrResolver === 'function' ? keyOrResolver(b) : (b as any)[keyOrResolver];
+
+  if (valA === undefined || valA === null) valA = '';
+  if (valB === undefined || valB === null) valB = '';
+
+  let comparison = 0;
+
+  // Let's determine the type/key string representation to check rules
+  const keyStr = typeof keyOrResolver === 'string' ? keyOrResolver.toLowerCase() : '';
+
+  // Rule 1: Suministro (e.g., SUM-0001, SUM-12, SUM-2, 12, etc.)
+  if (keyStr.includes('suministro') || keyStr === 'codigo' || keyStr === 'suministros' || keyStr.includes('supply') || keyStr.includes('code')) {
+    // If it's an array of suministros, take the first one
+    const strA = Array.isArray(valA) ? (valA[0] || '') : String(valA);
+    const strB = Array.isArray(valB) ? (valB[0] || '') : String(valB);
+    const numA = parseInt(strA.replace(/\D/g, ''), 10) || 0;
+    const numB = parseInt(strB.replace(/\D/g, ''), 10) || 0;
+    if (numA !== numB) {
+      comparison = numA - numB;
+    } else {
+      comparison = strA.localeCompare(strB, 'es', { numeric: true });
+    }
+  }
+  // Rule 2: DNI or RUC (numerical comparison)
+  else if (keyStr === 'dni' || keyStr === 'ruc') {
+    const numA = parseFloat(String(valA).replace(/\D/g, '')) || 0;
+    const numB = parseFloat(String(valB).replace(/\D/g, '')) || 0;
+    comparison = numA - numB;
+  }
+  // Rule 4: Dates (from oldest to newest)
+  else if (
+    keyStr.includes('fecha') || 
+    keyStr === 'mes' || 
+    keyStr === 'mespagado' ||
+    keyStr === 'periodo' ||
+    (typeof valA === 'string' && !isNaN(Date.parse(valA)) && valA.includes('-') && valA.length >= 7)
+  ) {
+    const dateA = new Date(valA).getTime() || 0;
+    const dateB = new Date(valB).getTime() || 0;
+    comparison = dateA - dateB;
+  }
+  // Rule 3: Names, Lastnames, Razón Social or alphabetical strings
+  else if (typeof valA === 'string' && typeof valB === 'string') {
+    comparison = valA.localeCompare(valB, 'es', { sensitivity: 'base', numeric: true });
+  }
+  // Rule 5: Any other field (e.g. numbers, booleans)
+  else {
+    if (valA < valB) comparison = -1;
+    else if (valA > valB) comparison = 1;
+    else comparison = 0;
+  }
+
+  return direction === 'asc' ? comparison : -comparison;
+}
+
+

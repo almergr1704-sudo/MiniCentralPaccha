@@ -162,6 +162,10 @@ export default function Usuarios() {
     const matchesStatus = statusFilter === 'TODOS' || adminEstado === statusFilter;
     
     return matchesSearch && matchesStatus;
+  }).sort((a, b) => {
+    const nameA = `${a.apellidos || ''}, ${a.nombres || ''}`.toLowerCase();
+    const nameB = `${b.apellidos || ''}, ${b.nombres || ''}`.toLowerCase();
+    return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
   });
 
   const [currentPage, setCurrentPage] = useState(1);

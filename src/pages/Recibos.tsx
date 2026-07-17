@@ -315,8 +315,13 @@ export default function Recibos() {
     });
   });
 
-  // Sort receipts by date DESC
-  unifiedReceiptsList.sort((a, b) => b.fecha.localeCompare(a.fecha));
+  // Sort receipts: oldest to newest (ascending) if search filters are active, otherwise newest to oldest (descending)
+  const isFilterActive = !!(searchTerm || selectedClientId || selectedSupplyCode || filterEstado !== 'TODOS' || filterType !== 'TODOS' || filterCreator !== 'TODOS' || filterBilledMonth || filterStartDate || filterEndDate);
+  if (isFilterActive) {
+    unifiedReceiptsList.sort((a, b) => a.fecha.localeCompare(b.fecha));
+  } else {
+    unifiedReceiptsList.sort((a, b) => b.fecha.localeCompare(a.fecha));
+  }
 
   // FILTER LOGIC
   const filteredReceipts = unifiedReceiptsList.filter(item => {

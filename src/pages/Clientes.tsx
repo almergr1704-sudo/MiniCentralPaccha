@@ -1,21 +1,29 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, User, Filter, Upload, Download, FileWarning, AlertCircle } from 'lucide-react';
+import { Plus, Search, User, Filter, Upload, Download, FileWarning, AlertCircle, FileText, X } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import { Button, Card, CardContent, Badge, Pagination } from '../components/ui';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { Client, ClientType } from '../store/types';
-import { normalizeSearchText, normalizeSupplyCode } from '../lib/utils';
+import { normalizeSearchText, normalizeSupplyCode, genericCompare } from '../lib/utils';
 import * as XLSX from 'xlsx';
 import { toast } from 'react-hot-toast';
 import { generateGeneralPaymentReceiptPDF } from '../lib/receipts';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { format } from 'date-fns';
 
 export default function Clientes() {
   const navigate = useNavigate();
   const { confirm } = useConfirm();
   const { clients, addClient, updateClient, transferSupply, markSupplyAsSocio, suppliesInfo, settings, consumptions, fines, addTransaction, userRole, meetings } = useAppContext();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState<ClientType | 'TODOS' | 'CORTADO'>('TODOS');
+  const [searchSupplyCode, setSearchSupplyCode] = useState('');
+  const [searchDniRuc, setSearchDniRuc] = useState('');
+  const [searchName, setSearchName] = useState('');
+  const [personTypeFilter, setPersonTypeFilter] = useState<'TODOS' | 'PERSONA' | 'EMPRESA'>('TODOS');
+  const [socioTypeFilter, setSocioTypeFilter] = useState<'TODOS' | 'SOCIO' | 'USUARIO'>('TODOS');
+  const [serviceTypeFilter, setServiceTypeFilter] = useState<'TODOS' | 'MONOFASICO' | 'TRIFASICO'>('TODOS');
+  const [statusFilter, setStatusFilter] = useState<'TODOS' | 'ACTIVO' | 'INACTIVO' | 'CORTADO'>('TODOS');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [transferState, setTransferState] = useState<{ 
@@ -143,43 +151,276 @@ export default function Clientes() {
     setIsModalOpen(true);
   };
 
-  const filteredClients = clients.filter(c => {
-    const rawFullName = c.nombre ? c.nombre : `${c.nombres || ''} ${c.apellidos || ''}`;
-    const fullName = normalizeSearchText(rawFullName);
-    const dni = normalizeSearchText(c.dni || '');
-    const allSuministros = normalizeSearchText([c.codigoSuministro || '', ...(c.suministros || [])].join(' '));
-    const normalizedSearch = normalizeSearchText(searchTerm);
-    
-    const matchesSearch = !normalizedSearch || 
-                          fullName.includes(normalizedSearch) || 
-                          dni.includes(normalizedSearch) || 
-                          allSuministros.includes(normalizedSearch);
-                          
-    const isClientSocio = (c.suministros?.length ? c.suministros : [c.codigoSuministro]).some(sup => {
-       return suppliesInfo?.find(s => s.codigo === sup)?.isSocio ?? (c.tipo === 'SOCIO');
-    }) || c.tipo === 'SOCIO';
+  const [sortField, setSortField] = useState<string>('nombre');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
-    const clientComputedType = isClientSocio ? 'SOCIO' : 'USUARIO';
+  const filteredClients = useMemo(() => {
+    return clients.filter(c => {
+      // 1. Search Supply Code
+      if (searchSupplyCode) {
+        const normSearch = normalizeSearchText(searchSupplyCode);
+        const allSupplies = normalizeSearchText([c.codigoSuministro || '', ...(c.suministros || [])].join(' '));
+        if (!allSupplies.includes(normSearch)) return false;
+      }
 
-    const matchesType = filterType === 'TODOS' || 
-                        (filterType === 'CORTADO' ? c.estado === 'CORTADO' : clientComputedType === filterType);
+      // 2. Search DNI/RUC
+      if (searchDniRuc) {
+        const normSearch = normalizeSearchText(searchDniRuc);
+        const dni = normalizeSearchText(c.dni || '');
+        if (!dni.includes(normSearch)) return false;
+      }
 
-    return matchesSearch && matchesType;
-  });
+      // 3. Search Name
+      if (searchName) {
+        const normSearch = normalizeSearchText(searchName);
+        const rawFullName = c.nombre ? c.nombre : `${c.nombres || ''} ${c.apellidos || ''}`;
+        const fullName = normalizeSearchText(rawFullName);
+        if (!fullName.includes(normSearch)) return false;
+      }
+
+      // 4. Tipo de Cliente (Persona/Empresa)
+      if (personTypeFilter !== 'TODOS') {
+        const computedPersonType = c.tipoPersona || 'PERSONA';
+        if (computedPersonType !== personTypeFilter) return false;
+      }
+
+      // 5. Tipo de Socio
+      if (socioTypeFilter !== 'TODOS') {
+        const isClientSocio = (c.suministros?.length ? c.suministros : [c.codigoSuministro]).some(sup => {
+           return suppliesInfo?.find(s => s.codigo === sup)?.isSocio ?? (c.tipo === 'SOCIO');
+        }) || c.tipo === 'SOCIO';
+        const computedSocioType = isClientSocio ? 'SOCIO' : 'USUARIO';
+        if (computedSocioType !== socioTypeFilter) return false;
+      }
+
+      // 6. Tipo de Servicio (Monofásico/Trifásico)
+      if (serviceTypeFilter !== 'TODOS') {
+        const computedServiceType = c.faseSuministro || 'MONOFASICO';
+        if (computedServiceType !== serviceTypeFilter) return false;
+      }
+
+      // 7. Estado del Servicio
+      if (statusFilter !== 'TODOS') {
+        const computedStatus = c.estado || 'ACTIVO';
+        if (computedStatus !== statusFilter) return false;
+      }
+
+      return true;
+    });
+  }, [clients, suppliesInfo, searchSupplyCode, searchDniRuc, searchName, personTypeFilter, socioTypeFilter, serviceTypeFilter, statusFilter]);
+
+  const sortedClients = useMemo(() => {
+    return [...filteredClients].sort((a, b) => {
+      if (sortField === 'nombre') {
+        const nameA = a.nombre ? a.nombre : `${a.nombres || ''} ${a.apellidos || ''}`.trim();
+        const nameB = b.nombre ? b.nombre : `${b.nombres || ''} ${b.apellidos || ''}`.trim();
+        return genericCompare({ ...a, fullName: nameA }, { ...b, fullName: nameB }, 'fullName', sortDirection);
+      }
+      if (sortField === 'asisPercent') {
+        const isSocioA = (a.suministros?.length ? a.suministros : [a.codigoSuministro]).some(sup => {
+          return suppliesInfo?.find(s => s.codigo === sup)?.isSocio ?? (a.tipo === 'SOCIO');
+        }) || a.tipo === 'SOCIO';
+        const isSocioB = (b.suministros?.length ? b.suministros : [b.codigoSuministro]).some(sup => {
+          return suppliesInfo?.find(s => s.codigo === sup)?.isSocio ?? (b.tipo === 'SOCIO');
+        }) || b.tipo === 'SOCIO';
+        const asisPercentA = isSocioA ? (() => {
+          const asambleas = meetings.filter(m => m.tipo === 'ASAMBLEA' && m.estado === 'FINALIZADA');
+          const asambleasAsistidas = asambleas.filter(m => m.asistencia[a.id] === 'ASISTIO' || m.asistencia[a.id] === 'JUSTIFICO');
+          return asambleas.length > 0 ? (asambleasAsistidas.length / asambleas.length) * 100 : 100;
+        })() : 0;
+        const asisPercentB = isSocioB ? (() => {
+          const asambleas = meetings.filter(m => m.tipo === 'ASAMBLEA' && m.estado === 'FINALIZADA');
+          const asambleasAsistidas = asambleas.filter(m => m.asistencia[b.id] === 'ASISTIO' || m.asistencia[b.id] === 'JUSTIFICO');
+          return asambleas.length > 0 ? (asambleasAsistidas.length / asambleas.length) * 100 : 100;
+        })() : 0;
+        return genericCompare({ ...a, asisPercent: asisPercentA }, { ...b, asisPercent: asisPercentB }, 'asisPercent', sortDirection);
+      }
+      return genericCompare(a, b, sortField, sortDirection);
+    });
+  }, [filteredClients, sortField, sortDirection, suppliesInfo, meetings]);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(20);
-  const totalPages = Math.ceil(filteredClients.length / itemsPerPage);
+  const totalPages = Math.ceil(sortedClients.length / itemsPerPage);
   
-  const currentClients = filteredClients.slice(
+  const currentClients = sortedClients.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
 
-  // Reset to first page if search/filter changes
-  React.useEffect(() => {
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const renderSortIndicator = (field: string) => {
+    if (sortField !== field) return null;
+    return sortDirection === 'asc' ? ' ▲' : ' ▼';
+  };
+
+  const isAnyFilterActive = searchSupplyCode || searchDniRuc || searchName || personTypeFilter !== 'TODOS' || socioTypeFilter !== 'TODOS' || serviceTypeFilter !== 'TODOS' || statusFilter !== 'TODOS';
+
+  const clearClientFilters = () => {
+    setSearchSupplyCode('');
+    setSearchDniRuc('');
+    setSearchName('');
+    setPersonTypeFilter('TODOS');
+    setSocioTypeFilter('TODOS');
+    setServiceTypeFilter('TODOS');
+    setStatusFilter('TODOS');
     setCurrentPage(1);
-  }, [searchTerm, filterType]);
+    setSortDirection('asc');
+  };
+
+  // Reset sorting to ascending and first page if search/filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+    setSortDirection('asc');
+  }, [searchSupplyCode, searchDniRuc, searchName, personTypeFilter, socioTypeFilter, serviceTypeFilter, statusFilter]);
+
+  const handleExportClientsPDF = () => {
+    const toastId = toast.loading('Generando PDF de clientes...');
+    try {
+      const doc = new jsPDF('l', 'mm', 'a4');
+      
+      doc.setFontSize(18);
+      doc.setTextColor(15, 23, 42);
+      doc.text('Reporte de Clientes - Filtros Avanzados', 14, 20);
+      
+      doc.setFontSize(10);
+      doc.setTextColor(100, 116, 139);
+      const nowStr = format(new Date(), 'dd/MM/yyyy HH:mm');
+      doc.text(`Generado el: ${nowStr}`, 14, 26);
+      
+      const filtersApplied = [
+        `Suministro: ${searchSupplyCode || 'Todos'}`,
+        `DNI/RUC: ${searchDniRuc || 'Todos'}`,
+        `Nombre: ${searchName || 'Todos'}`,
+        `Socio: ${socioTypeFilter}`,
+        `Persona: ${personTypeFilter}`,
+        `Servicio: ${serviceTypeFilter}`,
+        `Estado: ${statusFilter}`
+      ].join(' | ');
+      doc.text(`Filtros aplicados: ${filtersApplied}`, 14, 31);
+      
+      const tableHeaders = [
+        ['Código Suministro', 'Nombre del Cliente', 'DNI/RUC', 'Dirección', 'Tipo Cliente', 'Tipo Socio', 'Servicio', 'Estado', 'Fecha Reg.']
+      ];
+      
+      const tableRows = filteredClients.map(c => {
+        const rawFullName = c.nombre ? c.nombre : `${c.apellidos || ''}, ${c.nombres || ''}`;
+        const cleanSuministros = [c.codigoSuministro, ...(c.suministros || [])].filter(Boolean).join(', ');
+        
+        const isClientSocio = (c.suministros?.length ? c.suministros : [c.codigoSuministro]).some(sup => {
+           return suppliesInfo?.find(s => s.codigo === sup)?.isSocio ?? (c.tipo === 'SOCIO');
+        }) || c.tipo === 'SOCIO';
+        
+        const regDate = c.fechaRegistro ? format(new Date(c.fechaRegistro), 'dd/MM/yyyy') : 'N/A';
+        
+        return [
+          cleanSuministros || 'N/A',
+          rawFullName,
+          c.dni || 'N/A',
+          `${c.direccion || ''} ${c.numeroDireccion || ''}`.trim() || 'N/A',
+          c.tipoPersona === 'EMPRESA' ? 'Empresa' : 'Persona Natural',
+          isClientSocio ? 'Socio' : 'Usuario',
+          c.faseSuministro || 'MONOFASICO',
+          c.estado || 'ACTIVO',
+          regDate
+        ];
+      });
+      
+      autoTable(doc, {
+        startY: 36,
+        head: tableHeaders,
+        body: tableRows,
+        theme: 'striped',
+        headStyles: {
+          fillColor: [15, 23, 42],
+          textColor: [255, 255, 255],
+          fontSize: 9,
+          fontStyle: 'bold'
+        },
+        bodyStyles: {
+          fontSize: 8,
+          textColor: [51, 65, 85]
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252]
+        },
+        margin: { top: 35, left: 14, right: 14 }
+      });
+      
+      doc.save(`Reporte_Clientes_${format(new Date(), 'yyyyMMdd_HHmmss')}.pdf`);
+      toast.success('Reporte de clientes en PDF descargado.', { id: toastId });
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      toast.error('Error al generar PDF de clientes.', { id: toastId });
+    }
+  };
+
+  const handleExportClientsExcel = () => {
+    try {
+      const excelRows = filteredClients.map(c => {
+        const rawFullName = c.nombre ? c.nombre : `${c.apellidos || ''}, ${c.nombres || ''}`;
+        const cleanSuministros = [c.codigoSuministro, ...(c.suministros || [])].filter(Boolean).join(', ');
+        
+        const isClientSocio = (c.suministros?.length ? c.suministros : [c.codigoSuministro]).some(sup => {
+           return suppliesInfo?.find(s => s.codigo === sup)?.isSocio ?? (c.tipo === 'SOCIO');
+        }) || c.tipo === 'SOCIO';
+        
+        const regDate = c.fechaRegistro ? format(new Date(c.fechaRegistro), 'dd/MM/yyyy') : 'N/A';
+        
+        return {
+          'Cod. Suministro': cleanSuministros || 'N/A',
+          'Nombre / Razón Social': rawFullName,
+          'DNI / RUC': c.dni || 'N/A',
+          'Dirección': `${c.direccion || ''} ${c.numeroDireccion || ''}`.trim() || 'N/A',
+          'Referencia Dirección': c.referenciaDireccion || '',
+          'Teléfono': c.telefono || '',
+          'Correo': c.correo || '',
+          'Tipo Cliente': c.tipoPersona === 'EMPRESA' ? 'Empresa' : 'Persona Natural',
+          'Tipo Socio': isClientSocio ? 'Socio' : 'Usuario',
+          'Tipo de Servicio': c.faseSuministro || 'MONOFASICO',
+          'Estado': c.estado || 'ACTIVO',
+          'Fecha Registro': regDate
+        };
+      });
+      
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(excelRows);
+      
+      const maxLens = Object.keys(excelRows[0] || {}).reduce((acc, key) => {
+        acc[key] = key.length;
+        return acc;
+      }, {} as Record<string, number>);
+      
+      excelRows.forEach(row => {
+        Object.keys(row).forEach(key => {
+          const val = String((row as any)[key] || '');
+          if (val.length > maxLens[key]) {
+            maxLens[key] = val.length;
+          }
+        });
+      });
+      
+      ws['!cols'] = Object.keys(maxLens).map(key => ({
+        wch: Math.min(Math.max(maxLens[key] + 3, 10), 40)
+      }));
+      
+      XLSX.utils.book_append_sheet(wb, ws, "Clientes Filtrados");
+      XLSX.writeFile(wb, `Reporte_Clientes_${format(new Date(), 'yyyyMMdd_HHmmss')}.xlsx`);
+      toast.success('Reporte de clientes en Excel descargado.');
+    } catch (error) {
+      console.error('Error generating Excel:', error);
+      toast.error('Error al generar Excel de clientes.');
+    }
+  };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -440,42 +681,162 @@ export default function Clientes() {
         );
       }, [clients])}
 
-      <Card>
-        <CardContent className="p-0">
-          <div className="p-4 border-b border-slate-800 sm:flex sm:items-center sm:justify-between space-y-3 sm:space-y-0">
-            <div className="relative rounded-md shadow-sm max-w-md w-full">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-5 w-5 text-slate-500" aria-hidden="true" />
-              </div>
-              <input
-                type="text"
-                className="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 sm:text-sm border-slate-700 rounded-md py-2 border bg-[#0B0E14] text-slate-100"
-                placeholder="Buscar por nombre, DNI o suministro..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+      <Card className="bg-slate-900/30 border-slate-800">
+        <CardContent className="p-6 space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div className="flex items-center space-x-2 text-slate-100">
+              <Filter className="h-5 w-5 text-blue-500" />
+              <h3 className="text-lg font-semibold">Búsqueda Avanzada y Filtros</h3>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center space-x-2">
-                <Filter className="h-5 w-5 text-slate-500 hidden sm:block" />
-                <select
-                  value={filterType}
-                  onChange={(e) => setFilterType(e.target.value as any)}
-                  className="block w-full pl-3 pr-10 py-2 text-base border-slate-700 bg-transparent text-slate-100 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border [&>option]:bg-slate-900"
-                >
-                  <option value="TODOS">Todos</option>
-                  <option value="SOCIO">Solo Socios</option>
-                  <option value="USUARIO">Solo Usuarios</option>
-                  <option value="CORTADO">Solo En Corte</option>
-                </select>
-              </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportClientsPDF}
+                className="border-slate-700 text-slate-200 hover:bg-slate-800 flex items-center gap-2"
+              >
+                <FileText className="h-4 w-4 text-rose-500" />
+                Exportar PDF
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportClientsExcel}
+                className="border-slate-700 text-slate-200 hover:bg-slate-800 flex items-center gap-2"
+              >
+                <Download className="h-4 w-4 text-emerald-500" />
+                Exportar Excel
+              </Button>
             </div>
           </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Search Supply Code */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400">Código de Suministro</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Ej: SUM-0001"
+                  value={searchSupplyCode}
+                  onChange={(e) => setSearchSupplyCode(e.target.value)}
+                  className="w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 pl-9 pr-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            {/* Search DNI/RUC */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400">DNI o RUC</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Ej: 10456..."
+                  value={searchDniRuc}
+                  onChange={(e) => setSearchDniRuc(e.target.value)}
+                  className="w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 pl-9 pr-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            {/* Search Name */}
+            <div className="space-y-1.5 md:col-span-2">
+              <label className="text-xs font-semibold text-slate-400">Nombres y Apellidos / Razón Social</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Buscar por cliente..."
+                  value={searchName}
+                  onChange={(e) => setSearchName(e.target.value)}
+                  className="w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 pl-9 pr-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            {/* Filter Tipo Persona */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400">Tipo de Cliente</label>
+              <select
+                value={personTypeFilter}
+                onChange={(e) => setPersonTypeFilter(e.target.value as any)}
+                className="w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500 [&>option]:bg-slate-900"
+              >
+                <option value="TODOS">Todos los Tipos</option>
+                <option value="PERSONA">Persona Natural</option>
+                <option value="EMPRESA">Empresa / Razón Social</option>
+              </select>
+            </div>
+
+            {/* Filter Tipo Socio */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400">Tipo de Socio</label>
+              <select
+                value={socioTypeFilter}
+                onChange={(e) => setSocioTypeFilter(e.target.value as any)}
+                className="w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500 [&>option]:bg-slate-900"
+              >
+                <option value="TODOS">Todos</option>
+                <option value="SOCIO">Socio</option>
+                <option value="USUARIO">Usuario</option>
+              </select>
+            </div>
+
+            {/* Filter Tipo Servicio */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400">Tipo de Servicio</label>
+              <select
+                value={serviceTypeFilter}
+                onChange={(e) => setServiceTypeFilter(e.target.value as any)}
+                className="w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500 [&>option]:bg-slate-900"
+              >
+                <option value="TODOS">Todos los Servicios</option>
+                <option value="MONOFASICO">Monofásico</option>
+                <option value="TRIFASICO">Trifásico</option>
+              </select>
+            </div>
+
+            {/* Filter Estado Servicio */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400">Estado del Servicio</label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as any)}
+                className="w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500 [&>option]:bg-slate-900"
+              >
+                <option value="TODOS">Todos los Estados</option>
+                <option value="ACTIVO">Activo</option>
+                <option value="INACTIVO">Inactivo</option>
+                <option value="CORTADO">En Corte</option>
+              </select>
+            </div>
+          </div>
+
+          {isAnyFilterActive && (
+            <div className="flex justify-end pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearClientFilters}
+                className="border-dashed border-red-500/40 text-red-400 hover:bg-red-500/10 flex items-center gap-1.5"
+              >
+                <X className="h-4 w-4" />
+                Limpiar Filtros Avanzados
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-0">
 
           <Pagination
             currentPage={currentPage}
             totalPages={totalPages}
-            totalItems={filteredClients.length}
+            totalItems={sortedClients.length}
             itemsPerPage={itemsPerPage}
             onPageChange={setCurrentPage}
             onItemsPerPageChange={(items) => { setItemsPerPage(items); setCurrentPage(1); }}
@@ -487,19 +848,30 @@ export default function Clientes() {
               <thead className="bg-slate-800/50">
                 <tr>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                    Cliente / Suministro
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <span className="mr-2">Cliente / Suministro:</span>
+                      <button type="button" onClick={() => handleSort('nombre')} className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${sortField === 'nombre' ? 'bg-blue-600 text-white border border-blue-500' : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'}`}>
+                        NOMBRE {renderSortIndicator('nombre')}
+                      </button>
+                      <button type="button" onClick={() => handleSort('codigoSuministro')} className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${sortField === 'codigoSuministro' ? 'bg-blue-600 text-white border border-blue-500' : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'}`}>
+                        SUMINISTRO {renderSortIndicator('codigoSuministro')}
+                      </button>
+                      <button type="button" onClick={() => handleSort('dni')} className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${sortField === 'dni' ? 'bg-blue-600 text-white border border-blue-500' : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'}`}>
+                        DNI {renderSortIndicator('dni')}
+                      </button>
+                    </div>
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                    Contacto
+                  <th scope="col" onClick={() => handleSort('direccion')} className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-800 hover:text-white select-none transition-colors">
+                    Contacto {renderSortIndicator('direccion')}
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                    Tipo
+                  <th scope="col" onClick={() => handleSort('tipo')} className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-800 hover:text-white select-none transition-colors">
+                    Tipo {renderSortIndicator('tipo')}
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                    Estado
+                  <th scope="col" onClick={() => handleSort('estado')} className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-800 hover:text-white select-none transition-colors">
+                    Estado {renderSortIndicator('estado')}
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                    Asistencia
+                  <th scope="col" onClick={() => handleSort('asisPercent')} className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-800 hover:text-white select-none transition-colors">
+                    Asistencia {renderSortIndicator('asisPercent')}
                   </th>
                   <th scope="col" className="relative px-6 py-3">
                     <span className="sr-only">Acciones</span>
@@ -705,7 +1077,7 @@ export default function Clientes() {
             <Pagination
               currentPage={currentPage}
               totalPages={totalPages}
-              totalItems={filteredClients.length}
+              totalItems={sortedClients.length}
               itemsPerPage={itemsPerPage}
               onPageChange={setCurrentPage}
               onItemsPerPageChange={(items) => { setItemsPerPage(items); setCurrentPage(1); }}

@@ -171,6 +171,10 @@ export default function Trabajadores() {
     const matchesSearch = query.includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'TODOS' || worker.estado === statusFilter;
     return matchesSearch && matchesStatus;
+  }).sort((a, b) => {
+    const nameA = `${a.apellidos || ''}, ${a.nombres || ''}`.toLowerCase();
+    const nameB = `${b.apellidos || ''}, ${b.nombres || ''}`.toLowerCase();
+    return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
   });
 
   // Payments lists corresponding to single worker or months
