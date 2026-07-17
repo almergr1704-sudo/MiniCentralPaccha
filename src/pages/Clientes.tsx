@@ -532,18 +532,35 @@ export default function Clientes() {
             const nombres = row.Nombres || row.nombres || row.Nombre || row.nombre || '';
             
             let apellidos = '';
-            if (row['Apellido Paterno'] || row['Apellido Materno']) {
-              apellidos = `${row['Apellido Paterno'] || ''} ${row['Apellido Materno'] || ''}`.trim();
+            if (row['Apellido Paterno'] || row['Apellido Materno'] || row.apellidoPaterno || row.apellidoMaterno) {
+              const apPaterno = row['Apellido Paterno'] || row.apellidoPaterno || '';
+              const apMaterno = row['Apellido Materno'] || row.apellidoMaterno || '';
+              apellidos = `${apPaterno} ${apMaterno}`.trim();
             } else {
               apellidos = row.Apellidos || row.apellidos || row.Apellido || row.apellido || '';
             }
             
-            const dni = (row['DNI/RUC'] || row.DNI || row.dni || row.RUC || row.ruc || row.Documento || '').toString();
+            const dni = (row['DNI/RUC'] || row.DNI || row.dni || row.RUC || row.ruc || row.Documento || '').toString().trim();
             const tipoPersonaRaw = (row['Tipo Persona'] || row.tipoPersona || row.TipoPersona || '').toString().toUpperCase();
             const tipoPersona = tipoPersonaRaw === 'EMPRESA' ? 'EMPRESA' : 'PERSONA';
             const tipo = (row.Tipo || row.tipo || 'USUARIO').toString().toUpperCase() === 'SOCIO' ? 'SOCIO' as const : 'USUARIO' as const;
-            const suministroStr = (row.Suministro || row.suministro || row.Suministros || '').toString();
-            const numeroMedidor = (row.Medidor || row.medidor || row['Numero de Medidor'] || row['Número de Medidor'] || row.numeroMedidor || '').toString();
+            const suministroStr = (row.Suministro || row.suministro || row.Suministros || '').toString().trim();
+            const numeroMedidor = (row.Medidor || row.medidor || row['Numero de Medidor'] || row['Número de Medidor'] || row.numeroMedidor || '').toString().trim();
+            
+            const tipoVia = (row['Tipo Via'] || row['Tipo Vía'] || row.tipoVia || '').toString().trim();
+            const nombreVia = (row['Nombre Via'] || row['Nombre de Via'] || row['Nombre de Vía'] || row.nombreVia || '').toString().trim();
+            const sector = (row.Sector || row.sector || '').toString().trim();
+            const numeroDireccion = (row.Numero || row.numero || row.NumeroDireccion || '').toString().trim();
+            const referenciaDireccion = (row.Referencia || row.referencia || row.ReferenciaDireccion || '').toString().trim();
+
+            let direccion = (row.Direccion || row.direccion || '').toString().trim();
+            if (!direccion && (tipoVia || nombreVia)) {
+              const viaCombined = `${tipoVia} ${nombreVia}`.trim();
+              direccion = `${viaCombined}${numeroDireccion ? ` N° ${numeroDireccion}` : ''}${sector ? ` - ${sector}` : ''}`;
+            }
+
+            const faseRaw = (row['Fase Suministro'] || row.Fase || row['Tipo de Servicio'] || row.faseSuministro || 'MONOFASICO').toString().toUpperCase();
+            const faseSuministro = (faseRaw.includes('TRIFASICO') || faseRaw === 'TRIFASICO') ? 'TRIFASICO' as const : 'MONOFASICO' as const;
             
             if (nombres || apellidos || dni) {
               const suministrosArray = suministroStr.split(',').map((s: string) => normalizeSupplyCode(s)).filter((s: string) => s);
@@ -555,14 +572,18 @@ export default function Clientes() {
                   dni,
                   tipo,
                   estado: 'ACTIVO',
-                  direccion: row.Direccion || row.direccion || '',
-                  numeroDireccion: (row.Numero || row.numero || '').toString(),
-                  referenciaDireccion: row.Referencia || row.referencia || '',
-                  telefono: (row.Telefono || row.telefono || '').toString(),
-                  correo: row.Correo || row.correo || row.Email || row.email || '',
+                  direccion,
+                  numeroDireccion,
+                  referenciaDireccion,
+                  telefono: (row.Telefono || row.telefono || '').toString().trim(),
+                  correo: (row.Correo || row.correo || row.Email || row.email || '').toString().trim(),
                   codigoSuministro: suministrosArray[0] || '',
                   suministros: suministrosArray,
-                  numeroMedidor: numeroMedidor || undefined
+                  numeroMedidor: numeroMedidor || undefined,
+                  faseSuministro,
+                  tipoVia,
+                  nombreVia,
+                  sector
                 });
                 processed++;
               } catch (err: any) {
@@ -592,21 +613,44 @@ export default function Clientes() {
   };
 
   const handleDownloadTemplate = () => {
-    const ws = XLSX.utils.json_to_sheet([{
-      'Tipo Persona': 'PERSONA o EMPRESA',
-      Nombres: 'Juan (o Razón Social)',
-      'Apellido Paterno': 'Perez (vacío si es empresa)',
-      'Apellido Materno': 'Gomez (vacío si es empresa)',
-      'DNI/RUC': '12345678',
-      Tipo: 'SOCIO o USUARIO',
-      Suministro: '001, 002',
-      Medidor: 'MED-123',
-      Direccion: 'Av. Principal',
-      Numero: '123',
-      Referencia: 'Frente al parque',
-      Telefono: '987654321',
-      Correo: 'juan@example.com'
-    }]);
+    const ws = XLSX.utils.json_to_sheet([
+      {
+        'Tipo Persona': 'PERSONA',
+        Nombres: 'Juan Alberto',
+        'Apellido Paterno': 'Perez',
+        'Apellido Materno': 'Gomez',
+        'DNI/RUC': '12345678',
+        Tipo: 'SOCIO',
+        Suministro: '0015',
+        Medidor: 'MED-4560',
+        'Fase Suministro': 'MONOFASICO',
+        'Tipo Via': 'Avenida',
+        'Nombre Via': 'Las Flores',
+        Numero: '245',
+        Sector: 'Sector San Jose',
+        Referencia: 'Frente a la losa deportiva',
+        Telefono: '987654321',
+        Correo: 'juan.perez@example.com'
+      },
+      {
+        'Tipo Persona': 'EMPRESA',
+        Nombres: 'Servicios Hidraulicos S.A.C.',
+        'Apellido Paterno': '',
+        'Apellido Materno': '',
+        'DNI/RUC': '20601234567',
+        Tipo: 'USUARIO',
+        Suministro: '0016',
+        Medidor: 'MED-9988',
+        'Fase Suministro': 'TRIFASICO',
+        'Tipo Via': 'Jiron',
+        'Nombre Via': 'Progreso',
+        Numero: '102',
+        Sector: 'Zona Industrial',
+        Referencia: 'Al costado de la fabrica',
+        Telefono: '912345678',
+        Correo: 'contacto@servicios.com'
+      }
+    ]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Plantilla');
     XLSX.writeFile(wb, 'Plantilla_Clientes.xlsx');

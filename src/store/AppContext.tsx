@@ -194,7 +194,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // Automatic one-time migration and admin reconfiguration for the system
         if (colName === 'admins') {
           const defaultAdminInDb = items.find((a: any) => a.id === 'admin_default' || a.username === 'admin');
-          if (defaultAdminInDb) {
+          if (defaultAdminInDb && defaultAdminInDb.mustChangePassword === true) {
             let needsUpdate = false;
             try {
               const isCorrectPassword = defaultAdminInDb.password && bcrypt.compareSync('ALANgaona2010@', defaultAdminInDb.password);
