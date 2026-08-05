@@ -525,6 +525,51 @@ export default function Clientes() {
         // Process records
         let processed = 0;
         let errors = 0;
+
+        const usedSupplyNumbers = new Set<number>();
+
+        // 1. Collect all occupied supply numbers currently in database
+        clients.forEach(c => {
+          const codes = [c.codigoSuministro, ...(c.suministros || [])].filter(Boolean) as string[];
+          codes.forEach(code => {
+            let numStr = code;
+            if (code.toUpperCase().startsWith('SUM-')) {
+              numStr = code.substring(4);
+            }
+            const num = parseInt(numStr, 10);
+            if (!isNaN(num) && num > 0) {
+              usedSupplyNumbers.add(num);
+            }
+          });
+        });
+
+        // 2. Pre-scan incoming rows to collect explicit supply numbers provided in file
+        data.forEach(row => {
+          const sStr = (row.Suministro || row.suministro || row.Suministros || '').toString().trim();
+          if (sStr) {
+            const arr = sStr.split(',').map((s: string) => normalizeSupplyCode(s)).filter(Boolean);
+            arr.forEach((code: string) => {
+              let numStr = code;
+              if (code.toUpperCase().startsWith('SUM-')) {
+                numStr = code.substring(4);
+              }
+              const num = parseInt(numStr, 10);
+              if (!isNaN(num) && num > 0) {
+                usedSupplyNumbers.add(num);
+              }
+            });
+          }
+        });
+
+        // Helper to find first available free supply number (primer correlativo sin uso)
+        const getNextAvailableSupplyCode = (): string => {
+          let candidate = 1;
+          while (usedSupplyNumbers.has(candidate)) {
+            candidate++;
+          }
+          usedSupplyNumbers.add(candidate);
+          return `SUM-${String(candidate).padStart(4, '0')}`;
+        };
         
         const processRows = async () => {
           for (const row of data) {
@@ -563,7 +608,14 @@ export default function Clientes() {
             const faseSuministro = (faseRaw.includes('TRIFASICO') || faseRaw === 'TRIFASICO') ? 'TRIFASICO' as const : 'MONOFASICO' as const;
             
             if (nombres || apellidos || dni) {
-              const suministrosArray = suministroStr.split(',').map((s: string) => normalizeSupplyCode(s)).filter((s: string) => s);
+              let suministrosArray = suministroStr.split(',').map((s: string) => normalizeSupplyCode(s)).filter((s: string) => s);
+              
+              // Si el cliente no cuenta con suministro en el archivo, se asigna el primer número disponible (libre)
+              if (suministrosArray.length === 0) {
+                const autoCode = getNextAvailableSupplyCode();
+                suministrosArray = [autoCode];
+              }
+
               try {
                 await addClient({
                   nombres,
