@@ -612,48 +612,96 @@ export default function Clientes() {
     if(fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleDownloadTemplate = () => {
-    const ws = XLSX.utils.json_to_sheet([
-      {
-        'Tipo Persona': 'PERSONA',
-        Nombres: 'Juan Alberto',
-        'Apellido Paterno': 'Perez',
-        'Apellido Materno': 'Gomez',
-        'DNI/RUC': '12345678',
-        Tipo: 'SOCIO',
-        Suministro: '0015',
-        Medidor: 'MED-4560',
-        'Fase Suministro': 'MONOFASICO',
-        'Tipo Via': 'Avenida',
-        'Nombre Via': 'Las Flores',
-        Numero: '245',
-        Sector: 'Sector San Jose',
-        Referencia: 'Frente a la losa deportiva',
-        Telefono: '987654321',
-        Correo: 'juan.perez@example.com'
-      },
-      {
-        'Tipo Persona': 'EMPRESA',
-        Nombres: 'Servicios Hidraulicos S.A.C.',
-        'Apellido Paterno': '',
-        'Apellido Materno': '',
-        'DNI/RUC': '20601234567',
-        Tipo: 'USUARIO',
-        Suministro: '0016',
-        Medidor: 'MED-9988',
-        'Fase Suministro': 'TRIFASICO',
-        'Tipo Via': 'Jiron',
-        'Nombre Via': 'Progreso',
-        Numero: '102',
-        Sector: 'Zona Industrial',
-        Referencia: 'Al costado de la fabrica',
-        Telefono: '912345678',
-        Correo: 'contacto@servicios.com'
+  const handleDownloadTemplate = (rowsCount: number = 100) => {
+    const firstNames = ['Juan', 'Maria', 'Carlos', 'Ana', 'Jose', 'Rosa', 'Luis', 'Carmen', 'Jorge', 'Patricia', 'Pedro', 'Lucia', 'Miguel', 'Elena', 'Fernando', 'Sofia', 'Diego', 'Valeria', 'Manuel', 'Sonia', 'Ramon', 'Teresa', 'Victor', 'Yolanda', 'Raul', 'Isabel', 'Gonzalo', 'Gisela', 'Hector', 'Norma'];
+    const apPaternos = ['Quispe', 'Flores', 'Rodriguez', 'Sanchez', 'Garcia', 'Rojas', 'Diaz', 'Vargas', 'Mamani', 'Torres', 'Lopez', 'Gonzales', 'Perez', 'Chavez', 'Ramirez', 'Mendoza', 'Espinoza', 'Castillo', 'Fernandez', 'Gutierrez'];
+    const apMaternos = ['Huaman', 'Vasquez', 'Romero', 'Herrera', 'Valencia', 'Ccama', 'Condori', 'Vega', 'Morales', 'Ramos', 'Guerrero', 'Palomino', 'Silva', 'Medina', 'Paredes', 'Navarro', 'Aguilar', 'Soto', 'Meza', 'Pena'];
+    const empresas = [
+      'Constructora del Sur S.A.C.',
+      'Comercial e Inversiones Los Andes E.I.R.L.',
+      'Servicios Generales Agua Viva S.A.',
+      'Industrias Alimenticias del Valle S.R.L.',
+      'Distribuidora San Martin S.A.C.',
+      'Inversiones Yacu Manta E.I.R.L.',
+      'Multiservicios Progreso S.A.C.',
+      'Agroindustrias del Norte S.A.C.',
+      'Empresa de Transportes El Sol S.R.L.',
+      'Consultoría y Obras Santa Rosa S.A.C.'
+    ];
+    const viaTypes = ['Avenida', 'Jiron', 'Calle', 'Pasaje', 'Alameda', 'Prolongacion'];
+    const viaNames = ['Las Flores', 'Los Olivos', 'San Martin', 'Miguel Grau', 'Francisco Bolognesi', 'Arequipa', 'Tacna', 'Amazonas', 'Inca Garcilaso', 'Tupac Amaru', 'Proceres', 'Las Magnolias', 'Santa Rosa', 'Los Cedros', 'Union', 'La Paz', 'Independencia', 'El Sol', 'San Pedro', 'Los Pinos'];
+    const sectors = ['Sector San Jose', 'Sector Central', 'Zona Industrial', 'Barrio Alto', 'Sector Los Pinos', 'Barrio San Pedro', 'Sector La Victoria', 'Urbanización El Sol', 'Sector Bella Vista', 'Zona Comercial'];
+    const references = ['Frente a la plaza principal', 'A una cuadra del mercado', 'Al costado de la escuela', 'Frente a la losa deportiva', 'Junto a la posta medica', 'Detras de la iglesia', 'Esquina con el pasaje', 'Frente al parque central', 'Cerca a la comisaria', 'A la espalda del estadio'];
+
+    const rows = [];
+    const totalToGen = rowsCount === 100 ? 100 : 2;
+
+    for (let i = 0; i < totalToGen; i++) {
+      const isEmpresa = i % 10 === 9; // 10% empresas
+      const tipoPersona = isEmpresa ? 'EMPRESA' : 'PERSONA';
+      
+      let nombres = '';
+      let apPaterno = '';
+      let apMaterno = '';
+      let dniRuc = '';
+      let email = '';
+
+      if (isEmpresa) {
+        const empIndex = Math.floor(i / 10) % empresas.length;
+        nombres = empresas[empIndex];
+        apPaterno = '';
+        apMaterno = '';
+        dniRuc = `2060${String(100000 + i * 31).padStart(7, '0')}`;
+        email = `contacto${i + 1}@empresa.com`;
+      } else {
+        const fn1 = firstNames[i % firstNames.length];
+        const fn2 = (i % 3 === 0) ? ` ${firstNames[(i + 5) % firstNames.length]}` : '';
+        nombres = `${fn1}${fn2}`;
+        apPaterno = apPaternos[i % apPaternos.length];
+        apMaterno = apMaternos[(i + 3) % apMaternos.length];
+        dniRuc = String(40000000 + i * 137).slice(0, 8);
+        const cleanName = fn1.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const cleanPat = apPaterno.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        email = `${cleanName}.${cleanPat}${i + 1}@gmail.com`;
       }
-    ]);
+
+      const tipo = (i % 3 === 0) ? 'SOCIO' : 'USUARIO';
+      const suministro = String(i + 1).padStart(4, '0');
+      const medidor = `MED-${String(1001 + i).padStart(4, '0')}`;
+      const faseSuministro = (i % 8 === 0 || isEmpresa) ? 'TRIFASICO' : 'MONOFASICO';
+      const tipoVia = viaTypes[i % viaTypes.length];
+      const nombreVia = viaNames[i % viaNames.length];
+      const numero = String(102 + (i % 45) * 8);
+      const sector = sectors[i % sectors.length];
+      const referencia = references[i % references.length];
+      const telefono = `9${String(87654321 - i * 54321).slice(0, 8)}`;
+
+      rows.push({
+        'Tipo Persona': tipoPersona,
+        Nombres: nombres,
+        'Apellido Paterno': apPaterno,
+        'Apellido Materno': apMaterno,
+        'DNI/RUC': dniRuc,
+        Tipo: tipo,
+        Suministro: suministro,
+        Medidor: medidor,
+        'Fase Suministro': faseSuministro,
+        'Tipo Via': tipoVia,
+        'Nombre Via': nombreVia,
+        Numero: numero,
+        Sector: sector,
+        Referencia: referencia,
+        Telefono: telefono,
+        Correo: email
+      });
+    }
+
+    const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Plantilla');
-    XLSX.writeFile(wb, 'Plantilla_Clientes.xlsx');
+    const filename = totalToGen === 100 ? 'Plantilla_100_Clientes.xlsx' : 'Plantilla_Clientes.xlsx';
+    XLSX.writeFile(wb, filename);
+    toast.success(`Plantilla descargada (${totalToGen} registros).`);
   };
 
   return (
@@ -667,7 +715,7 @@ export default function Clientes() {
             Directorio de socios y usuarios de la central.
           </p>
         </div>
-        <div className="mt-4 sm:mt-0 flex gap-2">
+        <div className="mt-4 sm:mt-0 flex flex-wrap gap-2">
           <input 
             type="file" 
             accept=".xlsx, .xls, .csv" 
@@ -675,9 +723,13 @@ export default function Clientes() {
             ref={fileInputRef} 
             onChange={handleFileUpload} 
           />
-          <Button variant="outline" className="hidden sm:inline-flex" onClick={handleDownloadTemplate}>
+          <Button variant="outline" className="hidden sm:inline-flex" onClick={() => handleDownloadTemplate(100)}>
+            <Download className="-ml-1 mr-2 h-5 w-5 text-emerald-400" aria-hidden="true" />
+            Plantilla (100 filas)
+          </Button>
+          <Button variant="outline" className="hidden sm:inline-flex" onClick={() => handleDownloadTemplate(2)}>
             <Download className="-ml-1 mr-2 h-5 w-5" aria-hidden="true" />
-            Descargar Plantilla
+            Plantilla Corta
           </Button>
           {userRole !== 'FISCALIZADOR' && (
             <>
