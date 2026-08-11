@@ -9,6 +9,7 @@ import { normalizeSearchText, normalizeSupplyCode, genericCompare, scoreClientSu
 import * as XLSX from 'xlsx';
 import { toast } from 'react-hot-toast';
 import { generateGeneralPaymentReceiptPDF } from '../lib/receipts';
+import { ClientFormFields } from '../components/ClientFormFields';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
@@ -1344,166 +1345,63 @@ export default function Clientes() {
                         {editingId ? 'Editar Cliente' : 'Registrar Nuevo Cliente'}
                       </h3>
                       <div className="mt-4 space-y-4">
+                        <ClientFormFields
+                          values={{
+                            tipoPersona: formData.tipoPersona,
+                            nombres: formData.nombres,
+                            apellidoPaterno: apellidoPaterno,
+                            apellidoMaterno: apellidoMaterno,
+                            dni: formData.dni,
+                            tipoVia: formData.tipoVia,
+                            nombreVia: formData.nombreVia,
+                            numeroDireccion: formData.numeroDireccion,
+                            sector: formData.sector,
+                            referenciaDireccion: formData.referenciaDireccion,
+                            telefono: formData.telefono,
+                          }}
+                          onChange={updated => {
+                            if ('apellidoPaterno' in updated) {
+                              setApellidoPaterno(updated.apellidoPaterno!);
+                            }
+                            if ('apellidoMaterno' in updated) {
+                              setApellidoMaterno(updated.apellidoMaterno!);
+                            }
+                            setFormData(prev => ({
+                              ...prev,
+                              ...updated,
+                              nombres: updated.nombres !== undefined ? updated.nombres : prev.nombres
+                            }));
+                          }}
+                        />
+
                         <div>
-                          <label className="block text-sm font-medium text-slate-300 mb-1">Tipo de Persona</label>
-                          <div className="flex gap-4">
-                            <label className="flex items-center text-slate-300">
-                              <input type="radio" value="PERSONA" checked={formData.tipoPersona === 'PERSONA'} onChange={e => setFormData({...formData, tipoPersona: 'PERSONA'})} className="mr-2 text-blue-500 focus:ring-blue-500 bg-[#0B0E14] border-slate-700" />
-                              Persona Natural
-                            </label>
-                            <label className="flex items-center text-slate-300">
-                              <input type="radio" value="EMPRESA" checked={formData.tipoPersona === 'EMPRESA'} onChange={e => setFormData({...formData, tipoPersona: 'EMPRESA'})} className="mr-2 text-blue-500 focus:ring-blue-500 bg-[#0B0E14] border-slate-700" />
-                              Empresa
-                            </label>
-                          </div>
-                        </div>
-                        
-                        {formData.tipoPersona === 'PERSONA' ? (
-                          <div className="grid grid-cols-3 gap-4">
-                            <div>
-                              <label className="block text-sm font-medium text-slate-300">Nombres</label>
-                              <input type="text" required value={formData.nombres} onChange={e => setFormData({...formData, nombres: e.target.value})} className="mt-1 block w-full border border-slate-700 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-[#0B0E14] text-slate-100" />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-slate-300">Apellido Paterno</label>
-                              <input type="text" required value={apellidoPaterno} onChange={e => setApellidoPaterno(e.target.value)} className="mt-1 block w-full border border-slate-700 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-[#0B0E14] text-slate-100" />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-slate-300">Apellido Materno</label>
-                              <input type="text" value={apellidoMaterno} onChange={e => setApellidoMaterno(e.target.value)} className="mt-1 block w-full border border-slate-700 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-[#0B0E14] text-slate-100" />
-                            </div>
-                          </div>
-                        ) : (
-                          <div>
-                            <label className="block text-sm font-medium text-slate-300">Razón Social</label>
-                            <input type="text" required value={formData.nombres} onChange={e => setFormData({...formData, nombres: e.target.value})} className="mt-1 block w-full border border-slate-700 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-[#0B0E14] text-slate-100" />
-                          </div>
-                        )}
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-slate-300">
-                              {formData.tipoPersona === 'PERSONA' ? 'DNI' : 'RUC'}
-                            </label>
-                            <input 
-                              type="text" 
-                              required 
-                              value={formData.dni} 
-                              onChange={e => {
-                                const val = e.target.value.replace(/\D/g, '');
-                                setFormData({...formData, dni: val});
-                              }} 
-                              maxLength={formData.tipoPersona === 'PERSONA' ? 8 : 11}
-                              minLength={formData.tipoPersona === 'PERSONA' ? 8 : 11}
-                              pattern={formData.tipoPersona === 'PERSONA' ? "\\d{8}" : "\\d{11}"}
-                              title={formData.tipoPersona === 'PERSONA' ? "Debe contener 8 dígitos" : "Debe contener 11 dígitos"}
-                              className="mt-1 block w-full border border-slate-700 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-[#0B0E14] text-slate-100" 
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-slate-300">Cod. Suministro(s)</label>
-                            <div className="flex mt-1">
-                              <div className="flex flex-1 rounded-l-md border border-slate-700 overflow-hidden focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500">
-                                <span className="inline-flex items-center px-3 border-r border-slate-700 bg-slate-800 text-slate-400 text-sm">
-                                  SUM-
-                                </span>
-                                <input 
-                                  type="text" 
-                                  required 
-                                  value={suministrosStr.split(',').map(s => s.trim().replace(/^SUM-/i, '')).join(', ')} 
-                                  onChange={e => setSuministrosStr(e.target.value)} 
-                                  placeholder="Ej: 001, 002" 
-                                  className="flex-1 block w-full py-2 px-3 focus:outline-none sm:text-sm bg-[#0B0E14] text-slate-100" 
-                                />
-                              </div>
-                              <button 
-                                type="button" 
-                                onClick={handleAutoGenerateSuministro} 
-                                className="bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded-r-md text-slate-200 text-sm whitespace-nowrap border border-l-0 border-slate-700 transition"
-                              >
-                                Generar
-                              </button>
-                            </div>
-                            <p className="text-xs text-slate-500 mt-1">Separe múltiples códigos por comas (el prefijo SUM- se añade automáticamente).</p>
-                          </div>
-                        </div>
-                        {/* Formulario de Dirección Estructurado */}
-                        <div className="space-y-4 bg-slate-900/20 p-4 rounded-lg border border-slate-800/80">
-                          <h4 className="text-xs font-bold uppercase text-blue-400 tracking-wider">Dirección Estructurada</h4>
-                          
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                              <label className="block text-sm font-medium text-slate-300">Tipo de Vía *</label>
-                              <select 
-                                required 
-                                value={formData.tipoVia || ''} 
-                                onChange={e => setFormData({...formData, tipoVia: e.target.value})} 
-                                className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-slate-100"
-                              >
-                                <option value="">-- Seleccionar --</option>
-                                <option value="Avenida">Avenida</option>
-                                <option value="Calle">Calle</option>
-                                <option value="Jirón">Jirón</option>
-                                <option value="Pasaje">Pasaje</option>
-                                <option value="Carretera">Carretera</option>
-                                <option value="Prolongación">Prolongación</option>
-                                <option value="Otros">Otros</option>
-                              </select>
-                            </div>
-                            <div className="md:col-span-2">
-                              <label className="block text-sm font-medium text-slate-300">Nombre de la Vía *</label>
+                          <label className="block text-sm font-medium text-slate-300">Cod. Suministro(s)</label>
+                          <div className="flex mt-1">
+                            <div className="flex flex-1 rounded-l-md border border-slate-700 overflow-hidden focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500">
+                              <span className="inline-flex items-center px-3 border-r border-slate-700 bg-slate-800 text-slate-400 text-sm">
+                                SUM-
+                              </span>
                               <input 
                                 type="text" 
                                 required 
-                                value={formData.nombreVia || ''} 
-                                onChange={e => setFormData({...formData, nombreVia: e.target.value})} 
-                                placeholder="Ej: Larco, Bolognesi, etc."
-                                className="mt-1 block w-full border border-slate-700 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-[#0B0E14] text-slate-100" 
+                                value={suministrosStr.split(',').map(s => s.trim().replace(/^SUM-/i, '')).join(', ')} 
+                                onChange={e => setSuministrosStr(e.target.value)} 
+                                placeholder="Ej: 001, 002" 
+                                className="flex-1 block w-full py-2 px-3 focus:outline-none sm:text-sm bg-[#0B0E14] text-slate-100" 
                               />
                             </div>
+                            <button 
+                              type="button" 
+                              onClick={handleAutoGenerateSuministro} 
+                              className="bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded-r-md text-slate-200 text-sm whitespace-nowrap border border-l-0 border-slate-700 transition"
+                            >
+                              Generar
+                            </button>
                           </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                              <label className="block text-sm font-medium text-slate-300">N.º de Dirección *</label>
-                              <input 
-                                type="text" 
-                                required 
-                                value={formData.numeroDireccion || ''} 
-                                onChange={e => setFormData({...formData, numeroDireccion: e.target.value})} 
-                                placeholder="Ej: 123, S/N, Mz A Lt 5"
-                                className="mt-1 block w-full border border-slate-700 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-[#0B0E14] text-slate-100" 
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-slate-300">Sector / Barrio / Urbanización *</label>
-                              <input 
-                                type="text" 
-                                required 
-                                value={formData.sector || ''} 
-                                onChange={e => setFormData({...formData, sector: e.target.value})} 
-                                placeholder="Ej: Sector Alto, Barrio San José"
-                                className="mt-1 block w-full border border-slate-700 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-[#0B0E14] text-slate-100" 
-                              />
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-slate-300">Referencia (Opcional)</label>
-                            <input 
-                              type="text" 
-                              value={formData.referenciaDireccion || ''} 
-                              onChange={e => setFormData({...formData, referenciaDireccion: e.target.value})} 
-                              placeholder="Ej: Costado del parque, portón azul"
-                              className="mt-1 block w-full border border-slate-700 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-[#0B0E14] text-slate-100" 
-                            />
-                          </div>
+                          <p className="text-xs text-slate-500 mt-1">Separe múltiples códigos por comas (el prefijo SUM- se añade automáticamente).</p>
                         </div>
+
                         <div className="grid grid-cols-3 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-slate-300">Teléfono</label>
-                            <input type="text" value={formData.telefono} onChange={e => setFormData({...formData, telefono: e.target.value})} className="mt-1 block w-full border border-slate-700 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-[#0B0E14] text-slate-100" />
-                          </div>
                           <div>
                             <label className="block text-sm font-medium text-slate-300" title="Número del medidor asociado">N° Medidor (Opcional)</label>
                             <input type="text" value={formData.numeroMedidor || ''} onChange={e => setFormData({...formData, numeroMedidor: e.target.value})} placeholder="Ej: MED-123" className="mt-1 block w-full border border-slate-700 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-[#0B0E14] text-slate-100" />

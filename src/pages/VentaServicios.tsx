@@ -2,12 +2,15 @@ import React, { useState, useMemo } from 'react';
 import { PlusCircle, Search, UserCheck, UserPlus, CreditCard, CheckCircle, Receipt, Download } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import { Button, Card, CardContent } from '../components/ui';
+import { useConfirm } from '../components/ui/ConfirmDialog';
+import { ClientFormFields } from '../components/ClientFormFields';
 import { normalizeSupplyCode, normalizeSearchText, scoreClientSuppliesMatch } from '../lib/utils';
 import { Client, Transaction } from '../store/types';
 import { toast } from 'react-hot-toast';
 import { generateGeneralPaymentReceiptPDF } from '../lib/receipts';
 
 export default function VentaServicios() {
+  const { confirm } = useConfirm();
   const { clients, settings, addClient, updateClient, addTransaction, generateId, transactions, setSupplySocioStatus, suppliesInfo } = useAppContext();
   const [modalOpen, setModalOpen] = useState(false);
   
@@ -20,8 +23,13 @@ export default function VentaServicios() {
   // Search query for existing client selector
   const [clientSearchQuery, setClientSearchQuery] = useState('');
   
+  // Natural Person surname state
+  const [apellidoPaterno, setApellidoPaterno] = useState('');
+  const [apellidoMaterno, setApellidoMaterno] = useState('');
+
   // Form State
   const [formData, setFormData] = useState({
+    tipoPersona: 'PERSONA' as 'PERSONA' | 'EMPRESA',
     nombres: '',
     apellidos: '',
     dni: '',
@@ -62,26 +70,46 @@ export default function VentaServicios() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.codigoSuministro) {
-      toast.error('Debe ingresar o generar un código de suministro');
+      toast.error('❌ Debe ingresar o generar un código de suministro');
       return;
     }
+
+    const isConfirmed = await confirm({
+      title: 'Registrar Venta de Nuevo Servicio',
+      message: '¿Está seguro de que desea realizar esta acción?\n\nVerifique la información antes de continuar.',
+      confirmLabel: 'Confirmar',
+      cancelLabel: 'Cancelar',
+    });
+
+    if (!isConfirmed) return;
     
     try {
       let finalClientId = '';
       
       if (saleType === 'NEW_CLIENT') {
-        if (!formData.nombres || !formData.apellidos) {
-          toast.error('Los nombres y apellidos son obligatorios para un nuevo cliente');
-          return;
+        if (formData.tipoPersona === 'PERSONA') {
+          if (!formData.nombres.trim() || !apellidoPaterno.trim()) {
+            toast.error('❌ Los nombres y el apellido paterno son obligatorios');
+            return;
+          }
+        } else {
+          if (!formData.nombres.trim()) {
+            toast.error('❌ La Razón Social es obligatoria');
+            return;
+          }
         }
         
+        const fullApellidos = formData.tipoPersona === 'PERSONA' 
+          ? `${apellidoPaterno.trim()} ${apellidoMaterno.trim()}`.trim() 
+          : '';
+
         const viaCombined = `${formData.tipoVia || ''} ${formData.nombreVia || ''}`.trim();
         const constructedDireccion = `${viaCombined}${formData.numeroDireccion ? ` N° ${formData.numeroDireccion}` : ''}${formData.sector ? ` - ${formData.sector}` : ''}`;
 
         const newClient = await addClient({
           nombres: formData.nombres,
-          apellidos: formData.apellidos,
-          tipoPersona: 'PERSONA',
+          apellidos: fullApellidos,
+          tipoPersona: formData.tipoPersona,
           dni: formData.dni,
           direccion: constructedDireccion,
           numeroDireccion: formData.numeroDireccion,
@@ -110,7 +138,7 @@ export default function VentaServicios() {
         });
       } else {
         if (!selectedClientId) {
-          toast.error('Debe seleccionar un cliente existente');
+          toast.error('❌ Debe seleccionar un cliente existente');
           return;
         }
         const clientObj = clients.find(c => c.id === selectedClientId);
@@ -171,16 +199,19 @@ export default function VentaServicios() {
         });
       }
 
-      toast.success('Venta de nuevo servicio registrada con éxito');
+      toast.success('✅ La información se guardó correctamente.');
       setModalOpen(false);
       resetForm();
     } catch (error: any) {
-      toast.error(error.message || 'Error al registrar la venta');
+      toast.error('❌ No se pudo guardar la información.');
     }
   };
 
   const resetForm = () => {
+    setApellidoPaterno('');
+    setApellidoMaterno('');
     setFormData({
+      tipoPersona: 'PERSONA',
       nombres: '',
       apellidos: '',
       dni: '',
@@ -604,95 +635,36 @@ export default function VentaServicios() {
                        )}
                      </div>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-800/30 p-4 rounded-md border border-slate-800/50">
-                      <div className="sm:col-span-2 text-sm font-semibold text-blue-400 border-b border-slate-800 pb-2 mb-2">Datos del Nuevo Cliente</div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-400">Nombres *</label>
-                        <input type="text" required value={formData.nombres} onChange={e => setFormData({...formData, nombres: e.target.value})} className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-blue-500" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-400">Apellidos *</label>
-                        <input type="text" required value={formData.apellidos} onChange={e => setFormData({...formData, apellidos: e.target.value})} className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-blue-500" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-400">DNI</label>
-                        <input type="text" value={formData.dni} onChange={e => setFormData({...formData, dni: e.target.value})} className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-blue-500" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-400">Teléfono</label>
-                        <input type="text" value={formData.telefono} onChange={e => setFormData({...formData, telefono: e.target.value})} className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-blue-500" />
-                      </div>
-                      <div className="sm:col-span-2 border-t border-slate-800/80 pt-3 mt-1 space-y-3">
-                        <div className="text-xs font-bold uppercase text-blue-400 tracking-wider">Dirección Estructurada</div>
-                        
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                          <div>
-                            <label className="block text-xs font-medium text-slate-400">Tipo de Vía *</label>
-                            <select 
-                              required 
-                              value={formData.tipoVia} 
-                              onChange={e => setFormData({...formData, tipoVia: e.target.value})} 
-                              className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-blue-500 text-slate-200"
-                            >
-                              <option value="">-- Seleccionar --</option>
-                              <option value="Avenida">Avenida</option>
-                              <option value="Calle">Calle</option>
-                              <option value="Jirón">Jirón</option>
-                              <option value="Pasaje">Pasaje</option>
-                              <option value="Carretera">Carretera</option>
-                              <option value="Prolongación">Prolongación</option>
-                              <option value="Otros">Otros</option>
-                            </select>
-                          </div>
-                          <div className="sm:col-span-2">
-                            <label className="block text-xs font-medium text-slate-400">Nombre de la Vía *</label>
-                            <input 
-                              type="text" 
-                              required 
-                              value={formData.nombreVia} 
-                              onChange={e => setFormData({...formData, nombreVia: e.target.value})} 
-                              placeholder="Ej: Larco, Bolognesi, etc."
-                              className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-blue-500 text-slate-200" 
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-xs font-medium text-slate-400">N.º de Dirección *</label>
-                            <input 
-                              type="text" 
-                              required 
-                              value={formData.numeroDireccion} 
-                              onChange={e => setFormData({...formData, numeroDireccion: e.target.value})} 
-                              placeholder="Ej: 123, S/N, Mz A Lt 5"
-                              className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-blue-500 text-slate-200" 
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-slate-400">Sector / Barrio / Urbanización *</label>
-                            <input 
-                              type="text" 
-                              required 
-                              value={formData.sector} 
-                              onChange={e => setFormData({...formData, sector: e.target.value})} 
-                              placeholder="Ej: Sector Alto, Barrio San José"
-                              className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-blue-500 text-slate-200" 
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium text-slate-400">Referencia (Opcional)</label>
-                          <input 
-                            type="text" 
-                            value={formData.referenciaDireccion} 
-                            onChange={e => setFormData({...formData, referenciaDireccion: e.target.value})} 
-                            placeholder="Ej: Costado del parque, portón azul"
-                            className="mt-1 block w-full bg-[#0B0E14] border border-slate-700 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-blue-500 text-slate-200" 
-                          />
-                        </div>
-                      </div>
+                    <div className="bg-slate-800/30 p-4 rounded-md border border-slate-800/50">
+                      <div className="text-sm font-semibold text-blue-400 border-b border-slate-800 pb-2 mb-3">Datos del Nuevo Cliente</div>
+                      <ClientFormFields
+                        values={{
+                          tipoPersona: formData.tipoPersona,
+                          nombres: formData.nombres,
+                          apellidoPaterno: apellidoPaterno,
+                          apellidoMaterno: apellidoMaterno,
+                          dni: formData.dni,
+                          tipoVia: formData.tipoVia,
+                          nombreVia: formData.nombreVia,
+                          numeroDireccion: formData.numeroDireccion,
+                          sector: formData.sector,
+                          referenciaDireccion: formData.referenciaDireccion,
+                          telefono: formData.telefono,
+                        }}
+                        onChange={updated => {
+                          if ('apellidoPaterno' in updated) {
+                            setApellidoPaterno(updated.apellidoPaterno!);
+                          }
+                          if ('apellidoMaterno' in updated) {
+                            setApellidoMaterno(updated.apellidoMaterno!);
+                          }
+                          setFormData(prev => ({
+                            ...prev,
+                            ...updated,
+                            nombres: updated.nombres !== undefined ? updated.nombres : prev.nombres
+                          }));
+                        }}
+                      />
                     </div>
                   )}
 
