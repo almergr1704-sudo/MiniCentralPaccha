@@ -40,27 +40,42 @@ export default function Reuniones() {
     invitados: 'SOCIO'
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.motivo) return;
     
-    addMeeting({
-      fecha: new Date(formData.fecha).toISOString(),
-      horaTermino: new Date(formData.horaTermino).toISOString(),
-      motivo: formData.motivo,
-      asistencia: {}, // Initialize with empty attendance
-      lugar: formData.lugar,
-      temas: formData.temas,
-      invitados: formData.invitados,
-      estado: 'PROGRAMADA'
+    const isConfirmed = await confirm({
+      title: 'Programar Nueva Reunión / Asamblea',
+      message: `¿Está seguro de programar la reunión "${formData.motivo}" para el día ${formData.fecha.replace('T', ' ')}?`,
+      type: 'confirm',
+      confirmLabel: 'Sí, programar',
+      cancelLabel: 'Cancelar'
     });
-    
-    setIsModalOpen(false);
-    setFormData({ 
-      fecha: new Date().toISOString().slice(0, 16), 
-      horaTermino: new Date(Date.now() + 3600000).toISOString().slice(0, 16),
-      motivo: '', lugar: '', temas: '', invitados: 'SOCIO' 
-    });
+
+    if (!isConfirmed) return;
+
+    try {
+      await addMeeting({
+        fecha: new Date(formData.fecha).toISOString(),
+        horaTermino: new Date(formData.horaTermino).toISOString(),
+        motivo: formData.motivo,
+        asistencia: {}, // Initialize with empty attendance
+        lugar: formData.lugar,
+        temas: formData.temas,
+        invitados: formData.invitados,
+        estado: 'PROGRAMADA'
+      });
+      
+      setIsModalOpen(false);
+      setFormData({ 
+        fecha: new Date().toISOString().slice(0, 16), 
+        horaTermino: new Date(Date.now() + 3600000).toISOString().slice(0, 16),
+        motivo: '', lugar: '', temas: '', invitados: 'SOCIO' 
+      });
+      toast.success('✅ La reunión fue programada correctamente.');
+    } catch (err: any) {
+      toast.error('❌ No se pudo guardar la información. Verifique los datos e inténtelo nuevamente.');
+    }
   };
 
   const activeMeeting = meetings.find(m => m.id === selectedMeeting);

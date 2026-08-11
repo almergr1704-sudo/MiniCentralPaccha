@@ -90,7 +90,13 @@ export const ConfirmProvider = ({ children }: { children: ReactNode }) => {
 };
 
 const ConfirmModalContent = ({ options, onConfirm, onCancel }: { options: ConfirmOptions, onConfirm: () => void, onCancel: () => void }) => {
-  const { title, message, type = 'confirm', confirmLabel = 'Sí, continuar', cancelLabel = 'Cancelar' } = options;
+  const { 
+    title, 
+    message = 'Se procederá a guardar la información ingresada. Verifique los datos antes de continuar.', 
+    type = 'confirm', 
+    confirmLabel = 'Confirmar', 
+    cancelLabel = 'Cancelar' 
+  } = options;
 
   const iconMap = {
     success: <CheckCircle className="w-10 h-10 text-emerald-400" />,

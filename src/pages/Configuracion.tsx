@@ -54,14 +54,29 @@ export default function Configuracion() {
     }
   }, [settings]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (userRole === 'OPERATOR' || userRole === 'FISCALIZADOR') {
       toast.error('No tiene permisos para modificar la configuración.');
       return;
     }
-    updateSettings(formData);
-    toast.success('Configuración guardada correctamente.');
+
+    const isConfirmed = await confirm({
+      title: 'Actualizar Configuración del Sistema',
+      message: '¿Está seguro de que desea guardar los cambios en las tarifas y parámetros operativos?\n\nSe procederá a guardar la información ingresada. Verifique los datos antes de continuar.',
+      type: 'confirm',
+      confirmLabel: 'Sí, guardar',
+      cancelLabel: 'Cancelar'
+    });
+
+    if (!isConfirmed) return;
+
+    try {
+      await updateSettings(formData);
+      toast.success('✅ La información se guardó correctamente.');
+    } catch {
+      toast.error('❌ No se pudo guardar la información. Verifique los datos e inténtelo nuevamente.');
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
