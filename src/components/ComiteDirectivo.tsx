@@ -1055,10 +1055,10 @@ export default function ComiteDirectivo() {
 
               {/* Buttons */}
               <div className="flex justify-end space-x-3 pt-4 border-t border-slate-800">
-                <Button type="button" variant="outline" onClick={() => { resetForm(); setActiveTab('vigente'); }}>
+                <Button type="button" variant="cancel" onClick={() => { resetForm(); setActiveTab('vigente'); }}>
                   Cancelar
                 </Button>
-                <Button type="submit">
+                <Button type="submit" variant="primary">
                   {editingId ? 'Actualizar Comité' : 'Guardar Comité Directivo'}
                 </Button>
               </div>

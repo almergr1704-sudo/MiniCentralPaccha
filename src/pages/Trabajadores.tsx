@@ -734,17 +734,17 @@ export default function Trabajadores() {
                   </div>
                 </div>
 
-                <div className="bg-slate-900/60 px-6 py-3 sm:flex sm:flex-row-reverse sm:gap-2 border-t border-slate-800">
+                <div className="bg-slate-900/60 px-6 py-3 sm:flex sm:flex-row-reverse sm:gap-3 border-t border-slate-800">
                   <button
                     type="submit"
-                    className="w-full inline-flex justify-center rounded-lg border border-transparent shadow-sm px-4 py-2 bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white focus:outline-none sm:w-auto sm:text-xs"
+                    className="w-full inline-flex justify-center rounded-lg border border-emerald-500/30 shadow-sm px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-sm font-semibold text-white focus:outline-none sm:w-auto cursor-pointer"
                   >
                     Guardar Cambios
                   </button>
                   <button
                     type="button"
                     onClick={() => setIsWorkerModalOpen(false)}
-                    className="mt-3 w-full inline-flex justify-center rounded-lg border border-slate-800 shadow-sm px-4 py-2 bg-[#0C101A] hover:bg-slate-900 text-sm font-semibold text-slate-300 focus:outline-none sm:mt-0 sm:w-auto sm:text-xs"
+                    className="mt-3 w-full inline-flex justify-center rounded-lg border border-red-500/30 shadow-sm px-4 py-2 bg-red-600 hover:bg-red-700 text-sm font-medium text-white focus:outline-none sm:mt-0 sm:w-auto cursor-pointer"
                   >
                     Cancelar
                   </button>

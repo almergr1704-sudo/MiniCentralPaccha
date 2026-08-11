@@ -2152,16 +2152,17 @@ export default function Finanzas() {
                     </div>
                   </div>
 
-                  <div className="bg-slate-900/60 px-6 py-3 sm:flex sm:flex-row-reverse sm:gap-2 border-t border-slate-800">
+                  <div className="bg-slate-900/60 px-6 py-3 sm:flex sm:flex-row-reverse sm:gap-3 border-t border-slate-800">
                     <Button
                       type="submit"
-                      className="w-full inline-flex justify-center bg-blue-600 hover:bg-blue-500 text-white sm:w-auto border-0 font-bold"
+                      variant="primary"
+                      className="w-full inline-flex justify-center sm:w-auto font-bold"
                     >
                       Registrar y Emitir Boleta
                     </Button>
                     <Button
                       type="button"
-                      variant="outline"
+                      variant="cancel"
                       onClick={closeModal}
                       className="mt-3 w-full sm:mt-0 sm:w-auto"
                     >

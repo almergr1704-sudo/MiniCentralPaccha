@@ -593,9 +593,9 @@ export default function Reuniones() {
                     </div>
                   </div>
                 </div>
-                <div className="bg-slate-800/50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                  <Button type="submit" className="w-full sm:ml-3 sm:w-auto">Crear Reunión</Button>
-                  <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)} className="mt-3 w-full sm:mt-0 sm:w-auto">Cancelar</Button>
+                <div className="bg-slate-800/50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse gap-3">
+                  <Button type="submit" variant="primary" className="w-full sm:ml-3 sm:w-auto">Crear Reunión</Button>
+                  <Button type="button" variant="cancel" onClick={() => setIsModalOpen(false)} className="mt-3 w-full sm:mt-0 sm:w-auto">Cancelar</Button>
                 </div>
               </form>
             </div>

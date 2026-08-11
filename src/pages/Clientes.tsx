@@ -1535,11 +1535,11 @@ export default function Clientes() {
                     </div>
                   </div>
                 </div>
-                <div className="bg-slate-800/50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                  <Button type="submit" className="w-full sm:ml-3 sm:w-auto">
+                <div className="bg-slate-800/50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse gap-3">
+                  <Button type="submit" variant="primary" className="w-full sm:ml-3 sm:w-auto">
                     {editingId ? 'Actualizar' : 'Guardar Registro'}
                   </Button>
-                  <Button type="button" variant="outline" onClick={closeModal} className="mt-3 w-full sm:mt-0 sm:w-auto">
+                  <Button type="button" variant="cancel" onClick={closeModal} className="mt-3 w-full sm:mt-0 sm:w-auto">
                     Cancelar
                   </Button>
                 </div>
@@ -1818,11 +1818,11 @@ export default function Clientes() {
                      <p className="mt-2 text-xs text-amber-500 bg-amber-500/10 p-2 rounded">⚠️ Se transferirá todo el historial de lecturas, consumos y facturación asociada al suministro elegido.</p>
                   </div>
                 </div>
-                <div className="bg-slate-900/50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse border-t border-slate-800">
-                  <Button type="submit" className="w-full sm:ml-3 sm:w-auto bg-purple-600 hover:bg-purple-700 text-white">
+                <div className="bg-slate-900/50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse gap-3 border-t border-slate-800">
+                  <Button type="submit" variant="primary" className="w-full sm:ml-3 sm:w-auto">
                     Confirmar Cambio
                   </Button>
-                  <Button type="button" onClick={() => setIsTransferModalOpen(false)} variant="outline" className="mt-3 w-full sm:mt-0 sm:w-auto text-slate-300 border-slate-600 hover:bg-slate-800">
+                  <Button type="button" onClick={() => setIsTransferModalOpen(false)} variant="cancel" className="mt-3 w-full sm:mt-0 sm:w-auto">
                     Cancelar
                   </Button>
                 </div>

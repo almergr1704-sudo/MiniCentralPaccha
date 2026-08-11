@@ -324,10 +324,10 @@ export default function Usuarios() {
                         <>
                           {editingId === admin.id ? (
                             <>
-                              <Button size="sm" onClick={() => handleUpdateRole(admin.id)}>
+                              <Button size="sm" variant="primary" onClick={() => handleUpdateRole(admin.id)}>
                                 Guardar
                               </Button>
-                              <Button size="sm" variant="outline" onClick={() => setEditingId(null)}>
+                              <Button size="sm" variant="cancel" onClick={() => setEditingId(null)}>
                                 Cancelar
                               </Button>
                             </>
@@ -522,11 +522,11 @@ export default function Usuarios() {
                     <PasswordStrengthIndicator passwordStr={newPassword} />
                   </div>
                 </div>
-                <div className="px-4 py-3 bg-slate-800/30 sm:px-6 sm:flex sm:flex-row-reverse border-t border-slate-800">
-                  <Button type="submit" disabled={creatingUser} className="w-full sm:ml-3 sm:w-auto">
+                <div className="px-4 py-3 bg-slate-800/30 sm:px-6 sm:flex sm:flex-row-reverse gap-3 border-t border-slate-800">
+                  <Button type="submit" variant="primary" disabled={creatingUser} className="w-full sm:ml-3 sm:w-auto">
                     {creatingUser ? 'Creando...' : 'Crear Usuario'}
                   </Button>
-                  <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)} className="mt-3 w-full sm:mt-0 sm:ml-3 sm:w-auto">
+                  <Button type="button" variant="cancel" onClick={() => setIsModalOpen(false)} className="mt-3 w-full sm:mt-0 sm:w-auto">
                     Cancelar
                   </Button>
                 </div>

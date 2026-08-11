@@ -219,10 +219,10 @@ export const ImportSummaryModal: React.FC<ImportSummaryModalProps> = ({
               </Button>
             )}
             <Button
-              variant="default"
+              variant="primary"
               size="sm"
               onClick={onClose}
-              className="bg-blue-600 hover:bg-blue-500 text-white font-medium px-6"
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-6"
             >
               Aceptar y Cerrar
             </Button>

@@ -24,18 +24,19 @@ export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDi
 
 // Button
 export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'primary' | 'secondary' | 'outline' | 'danger' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'outline' | 'danger' | 'cancel' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
 };
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = 'primary', size = 'md', ...props }, ref) => {
-    const baseStyles = "inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none";
+    const baseStyles = "inline-flex items-center justify-center font-medium rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none active:scale-95 cursor-pointer";
     const variants = {
-      primary: "bg-blue-600 text-white hover:bg-blue-500 focus:ring-blue-500 shadow-sm transition-colors",
-      secondary: "bg-slate-700 text-white hover:bg-slate-600 focus:ring-slate-500 shadow-sm transition-colors",
-      outline: "border border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 focus:ring-blue-500",
-      danger: "bg-red-600/80 text-white hover:bg-red-600 focus:ring-red-500 shadow-sm",
+      primary: "bg-emerald-600 text-white hover:bg-emerald-500 focus:ring-emerald-500 border border-emerald-500/30 shadow-md shadow-emerald-950/40",
+      secondary: "bg-slate-700 text-white hover:bg-slate-600 focus:ring-slate-500 shadow-sm",
+      outline: "border border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 focus:ring-slate-500",
+      danger: "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 border border-red-500/30 shadow-sm shadow-red-950/40",
+      cancel: "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 border border-red-500/30 shadow-sm shadow-red-950/40",
       ghost: "bg-transparent text-slate-400 hover:bg-slate-800 hover:text-slate-200 focus:ring-slate-500",
     };
     const sizes = {

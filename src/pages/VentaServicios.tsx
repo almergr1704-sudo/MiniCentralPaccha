@@ -753,8 +753,8 @@ export default function VentaServicios() {
                 </div>
                 
                 <div className="px-6 py-4 border-t border-slate-800 flex justify-end gap-3 bg-slate-900/50 rounded-b-lg">
-                  <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
-                  <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-900/20 shadow-sm">
+                  <Button type="button" variant="cancel" onClick={() => setModalOpen(false)}>Cancelar</Button>
+                  <Button type="submit" variant="primary" className="bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/20">
                     <CheckCircle className="w-4 h-4 mr-2" />
                     Registrar Venta
                   </Button>
