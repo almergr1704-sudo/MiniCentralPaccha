@@ -243,31 +243,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         }
         
-        // Notify user about real-time concurrency modifications by other operators
-        if (!isInitialRef.current[colName] && !isBulkOperatingRef.current) {
-          const docChanges = snapshot.docChanges();
-          if (docChanges.length <= 3) {
-            docChanges.forEach((change) => {
-              if (change.type === 'modified') {
-                const data = { id: change.doc.id, ...change.doc.data() } as T;
-                const updatedBy = (data as any).updatedBy || (data as any).createdBy || 'otro operador';
-                if (updatedBy && updatedBy !== user?.email) {
-                  const nameStr = getName ? getName(data) : change.doc.id;
-                  toast.success(`[Sincronización] El/la "${nameStr}" en ${label} ha sido actualizado/a en tiempo real por ${updatedBy}.`, { id: change.doc.id });
-                }
-              } else if (change.type === 'added') {
-                const data = { id: change.doc.id, ...change.doc.data() } as T;
-                const createdBy = (data as any).createdBy || 'otro operador';
-                if (createdBy && createdBy !== user?.email) {
-                  const nameStr = getName ? getName(data) : change.doc.id;
-                  toast.success(`[Sincronización] Se registró "${nameStr}" en ${label} por ${createdBy}.`, { id: change.doc.id });
-                }
-              }
-              // Skip 'removed' toast error popups to prevent screen flooding when records are deleted or database is reset
-            });
-          }
-        }
-        
         isInitialRef.current[colName] = false;
 
         setState(prev => {
