@@ -45,11 +45,22 @@ export default function Consumo() {
     return d.toISOString().slice(0, 7);
   });
   
-  const handleAnularRecibo = (cons: Consumption) => {
+  const handleAnularRecibo = async (cons: Consumption) => {
     if (cons.estadoPago !== 'PENDIENTE') {
       toast.error('Solo se pueden anular recibos en estado PENDIENTE.');
       return;
     }
+
+    const isConfirmed = await confirm({
+      title: 'Anular Recibo y Lectura',
+      message: `¿Está seguro de que desea anular el recibo #${cons.reciboNo || cons.id} del suministro ${cons.codigoSuministro} por un valor de S/ ${cons.montoCalculado.toFixed(2)}?\n\nEsta operación eliminará el registro de lectura del periodo ${cons.mes}. Verifique la información antes de continuar.`,
+      type: 'warning',
+      confirmLabel: 'Sí, continuar',
+      cancelLabel: 'Cancelar'
+    });
+
+    if (!isConfirmed) return;
+
     const motivo = window.prompt("Ingrese el motivo de la anulación (Mecanismo de Auditoría):");
     if (motivo) {
       if (motivo.length < 5) {

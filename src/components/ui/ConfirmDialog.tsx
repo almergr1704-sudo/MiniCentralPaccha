@@ -90,33 +90,24 @@ export const ConfirmProvider = ({ children }: { children: ReactNode }) => {
 };
 
 const ConfirmModalContent = ({ options, onConfirm, onCancel }: { options: ConfirmOptions, onConfirm: () => void, onCancel: () => void }) => {
-  const { title, message, type = 'confirm', confirmLabel = 'Confirmar', cancelLabel = 'Cancelar' } = options;
+  const { title, message, type = 'confirm', confirmLabel = 'Sí, continuar', cancelLabel = 'Cancelar' } = options;
 
   const iconMap = {
-    success: <CheckCircle className="w-10 h-10 text-emerald-500" />,
-    warning: <AlertTriangle className="w-10 h-10 text-orange-500" />,
-    error: <XCircle className="w-10 h-10 text-red-500" />,
-    info: <Info className="w-10 h-10 text-blue-500" />,
-    confirm: <HelpCircle className="w-10 h-10 text-blue-500" />,
-    danger: <AlertTriangle className="w-10 h-10 text-red-500" />
+    success: <CheckCircle className="w-10 h-10 text-emerald-400" />,
+    warning: <AlertTriangle className="w-10 h-10 text-amber-400" />,
+    error: <XCircle className="w-10 h-10 text-red-400" />,
+    info: <Info className="w-10 h-10 text-blue-400" />,
+    confirm: <HelpCircle className="w-10 h-10 text-emerald-400" />,
+    danger: <AlertTriangle className="w-10 h-10 text-red-400" />
   };
 
   const colorMap = {
     success: 'bg-emerald-500/10 border-emerald-500/20',
-    warning: 'bg-orange-500/10 border-orange-500/20',
+    warning: 'bg-amber-500/10 border-amber-500/20',
     error: 'bg-red-500/10 border-red-500/20',
     info: 'bg-blue-500/10 border-blue-500/20',
-    confirm: 'bg-blue-500/10 border-blue-500/20',
+    confirm: 'bg-emerald-500/10 border-emerald-500/20',
     danger: 'bg-red-500/10 border-red-500/20'
-  };
-
-  const confirmBtnClasses = {
-    success: "bg-emerald-600 hover:bg-emerald-500 hover:shadow-emerald-500/20 shadow-lg text-white",
-    warning: "bg-orange-600 hover:bg-orange-500 hover:shadow-orange-500/20 shadow-lg text-white",
-    error: "bg-red-600 hover:bg-red-500 hover:shadow-red-500/20 shadow-lg text-white",
-    info: "bg-blue-600 hover:bg-blue-500 hover:shadow-blue-500/20 shadow-lg text-white",
-    confirm: "bg-blue-600 hover:bg-blue-500 hover:shadow-blue-500/20 shadow-lg text-white",
-    danger: "bg-red-600 hover:bg-red-500 hover:shadow-red-500/20 shadow-lg text-white"
   };
 
   const defaultTitleMap = {
@@ -124,7 +115,7 @@ const ConfirmModalContent = ({ options, onConfirm, onCancel }: { options: Confir
     warning: 'Advertencia',
     error: 'Error',
     info: 'Información',
-    confirm: 'Confirmación',
+    confirm: '¿Está seguro de que desea realizar esta acción?',
     danger: 'Atención'
   };
 
@@ -133,44 +124,45 @@ const ConfirmModalContent = ({ options, onConfirm, onCancel }: { options: Confir
   return (
     <>
       <div className="sm:flex sm:items-start text-center sm:text-left">
-        <div className={cn("flex flex-shrink-0 items-center justify-center w-12 h-12 mx-auto sm:mx-0 sm:h-16 sm:w-16 rounded-full border", colorMap[type])}>
+        <div className={cn("flex flex-shrink-0 items-center justify-center w-12 h-12 mx-auto sm:mx-0 sm:h-14 sm:w-14 rounded-2xl border", colorMap[type])}>
           {iconMap[type]}
         </div>
-        <div className="mt-3 sm:mt-0 sm:ml-5 flex-1">
-          <h3 className="text-xl font-medium leading-6 text-slate-100 mb-2 mt-1">
+        <div className="mt-3 sm:mt-0 sm:ml-4 flex-1">
+          <h3 className="text-lg font-bold leading-6 text-slate-100 mb-2 mt-1">
             {displayTitle}
           </h3>
-          <div className="mt-3">
+          <div className="mt-2">
             <p className="text-sm text-slate-300 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
               {message}
             </p>
           </div>
         </div>
       </div>
-      <div className="mt-6 sm:mt-8 sm:flex sm:flex-row-reverse gap-3 flex-col-reverse justify-start">
+      <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row items-center justify-end gap-3">
         <button
           type="button"
-          className={cn("w-full inline-flex justify-center rounded-lg border border-transparent shadow-sm px-6 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 sm:w-auto transition-all", confirmBtnClasses[type])}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onConfirm();
-          }}
-        >
-          {confirmLabel}
-        </button>
-        <Button
-          type="button"
-          variant="ghost"
-          className="w-full mt-3 sm:mt-0 sm:w-auto text-sm bg-transparent hover:bg-slate-800"
+          className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-medium text-sm border border-red-500/40 shadow-sm shadow-red-950/50 flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
             onCancel();
           }}
         >
-          {cancelLabel}
-        </Button>
+          <XCircle className="w-4 h-4 text-red-200 shrink-0" />
+          <span>{cancelLabel}</span>
+        </button>
+        <button
+          type="button"
+          className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm border border-emerald-500/50 shadow-md shadow-emerald-950/50 flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onConfirm();
+          }}
+        >
+          <CheckCircle className="w-4 h-4 text-emerald-100 shrink-0" />
+          <span>{confirmLabel}</span>
+        </button>
       </div>
     </>
   );
