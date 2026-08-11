@@ -127,6 +127,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [user, setUser] = useState<any>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const isInitialRef = useRef<Record<string, boolean>>({});
+  const isBulkOperatingRef = useRef<boolean>(false);
 
   const [state, setState] = useState<AppState>(() => {
     const data = getLocalLegacyData();
@@ -243,26 +244,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         
         // Notify user about real-time concurrency modifications by other operators
-        if (!isInitialRef.current[colName]) {
-          snapshot.docChanges().forEach((change) => {
-            if (change.type === 'modified') {
-              const data = { id: change.doc.id, ...change.doc.data() } as T;
-              const updatedBy = (data as any).updatedBy || (data as any).createdBy || 'otro operador';
-              if (updatedBy !== user?.email) {
-                const nameStr = getName ? getName(data) : change.doc.id;
-                toast.success(`[Sincronización] El/la "${nameStr}" en ${label} ha sido actualizado/a en tiempo real por ${updatedBy}.`, { id: change.doc.id });
+        if (!isInitialRef.current[colName] && !isBulkOperatingRef.current) {
+          const docChanges = snapshot.docChanges();
+          if (docChanges.length <= 3) {
+            docChanges.forEach((change) => {
+              if (change.type === 'modified') {
+                const data = { id: change.doc.id, ...change.doc.data() } as T;
+                const updatedBy = (data as any).updatedBy || (data as any).createdBy || 'otro operador';
+                if (updatedBy && updatedBy !== user?.email) {
+                  const nameStr = getName ? getName(data) : change.doc.id;
+                  toast.success(`[Sincronización] El/la "${nameStr}" en ${label} ha sido actualizado/a en tiempo real por ${updatedBy}.`, { id: change.doc.id });
+                }
+              } else if (change.type === 'added') {
+                const data = { id: change.doc.id, ...change.doc.data() } as T;
+                const createdBy = (data as any).createdBy || 'otro operador';
+                if (createdBy && createdBy !== user?.email) {
+                  const nameStr = getName ? getName(data) : change.doc.id;
+                  toast.success(`[Sincronización] Se registró "${nameStr}" en ${label} por ${createdBy}.`, { id: change.doc.id });
+                }
               }
-            } else if (change.type === 'added') {
-              const data = { id: change.doc.id, ...change.doc.data() } as T;
-              const createdBy = (data as any).createdBy || 'otro operador';
-              if (createdBy !== user?.email) {
-                const nameStr = getName ? getName(data) : change.doc.id;
-                toast.success(`[Sincronización] Se registró "${nameStr}" en ${label} por ${createdBy}.`, { id: change.doc.id });
-              }
-            } else if (change.type === 'removed') {
-              toast.error(`[Sincronización] El registro "${change.doc.id}" ha sido eliminado/a de ${label} por otro operador.`, { id: change.doc.id + '-del' });
-            }
-          });
+              // Skip 'removed' toast error popups to prevent screen flooding when records are deleted or database is reset
+            });
+          }
         }
         
         isInitialRef.current[colName] = false;
@@ -383,114 +386,128 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const seedDatabaseFromBackup = async (backupData: any) => {
-    const collectionsToSeed = [
-      { key: 'clients', col: 'clients' },
-      { key: 'consumptions', col: 'consumptions' },
-      { key: 'transactions', col: 'transactions' },
-      { key: 'meetings', col: 'meetings' },
-      { key: 'fines', col: 'fines' },
-      { key: 'admins', col: 'admins' },
-      { key: 'auditLogs', col: 'auditLogs' },
-      { key: 'suppliesInfo', col: 'suppliesInfo' },
-      { key: 'comites', col: 'comites' },
-      { key: 'trabajadores', col: 'trabajadores' },
-      { key: 'pagosSueldos', col: 'pagosSueldos' }
-    ];
+    isBulkOperatingRef.current = true;
+    try {
+      const collectionsToSeed = [
+        { key: 'clients', col: 'clients' },
+        { key: 'consumptions', col: 'consumptions' },
+        { key: 'transactions', col: 'transactions' },
+        { key: 'meetings', col: 'meetings' },
+        { key: 'fines', col: 'fines' },
+        { key: 'admins', col: 'admins' },
+        { key: 'auditLogs', col: 'auditLogs' },
+        { key: 'suppliesInfo', col: 'suppliesInfo' },
+        { key: 'comites', col: 'comites' },
+        { key: 'trabajadores', col: 'trabajadores' },
+        { key: 'pagosSueldos', col: 'pagosSueldos' }
+      ];
 
-    for (const { key, col } of collectionsToSeed) {
-      const items = backupData[key] || [];
-      for (const item of items) {
-        if (item.id) {
-          if (key === 'admins' && item.password) {
-            const isHashed = item.password.startsWith('$2a$') || item.password.startsWith('$2b$') || item.password.startsWith('$2y$');
-            if (!isHashed) {
-              item.password = bcrypt.hashSync(item.password, 10);
+      for (const { key, col } of collectionsToSeed) {
+        const items = backupData[key] || [];
+        for (const item of items) {
+          if (item.id) {
+            if (key === 'admins' && item.password) {
+              const isHashed = item.password.startsWith('$2a$') || item.password.startsWith('$2b$') || item.password.startsWith('$2y$');
+              if (!isHashed) {
+                item.password = bcrypt.hashSync(item.password, 10);
+              }
             }
+            await setDoc(doc(db, col, item.id), item);
           }
-          await setDoc(doc(db, col, item.id), item);
         }
       }
-    }
 
-    if (backupData.settings) {
-      await setDoc(doc(db, 'settings', 'global'), backupData.settings);
-    }
-    
-    const counters = backupData.counters || {};
-    for (const counterId of Object.keys(counters)) {
-      await setDoc(doc(db, 'counters', counterId), { currentCount: counters[counterId] });
-    }
+      if (backupData.settings) {
+        await setDoc(doc(db, 'settings', 'global'), backupData.settings);
+      }
+      
+      const counters = backupData.counters || {};
+      for (const counterId of Object.keys(counters)) {
+        await setDoc(doc(db, 'counters', counterId), { currentCount: counters[counterId] });
+      }
 
-    addAuditLog('CREAR', 'SISTEMA', 'Sembrado y aprovisionamiento manual de base de datos desde respaldo');
+      addAuditLog('CREAR', 'SISTEMA', 'Sembrado y aprovisionamiento manual de base de datos desde respaldo');
+    } finally {
+      setTimeout(() => {
+        isBulkOperatingRef.current = false;
+      }, 5000);
+    }
   };
 
   const resetDatabase = async () => {
-    const collectionsToClear = [
-      'clients',
-      'consumptions',
-      'transactions',
-      'meetings',
-      'fines',
-      'auditLogs',
-      'suppliesInfo',
-      'comites',
-      'trabajadores',
-      'pagosSueldos',
-      'counters'
-    ];
+    isBulkOperatingRef.current = true;
+    try {
+      const collectionsToClear = [
+        'clients',
+        'consumptions',
+        'transactions',
+        'meetings',
+        'fines',
+        'auditLogs',
+        'suppliesInfo',
+        'comites',
+        'trabajadores',
+        'pagosSueldos',
+        'counters'
+      ];
 
-    for (const colName of collectionsToClear) {
-      const snap = await getDocs(collection(db, colName));
-      for (const docSnap of snap.docs) {
-        await deleteDoc(doc(db, colName, docSnap.id));
+      for (const colName of collectionsToClear) {
+        const snap = await getDocs(collection(db, colName));
+        for (const docSnap of snap.docs) {
+          await deleteDoc(doc(db, colName, docSnap.id));
+        }
       }
-    }
 
-    // Reset admins collection to just default admin
-    const adminSnap = await getDocs(collection(db, 'admins'));
-    for (const docSnap of adminSnap.docs) {
-      await deleteDoc(doc(db, 'admins', docSnap.id));
-    }
-
-    const defaultPasswordHash = bcrypt.hashSync('admin', 10);
-    const defaultAdmin = {
-      id: 'admin_default',
-      email: 'admin@jass.com',
-      username: 'admin',
-      password: defaultPasswordHash,
-      role: 'ADMIN',
-      fullName: 'Administrador Principal',
-      dni: '00000000',
-      telefono: '000000000',
-      estado: 'ACTIVO',
-      mustChangePassword: false,
-      createdAt: new Date().toISOString()
-    };
-    await setDoc(doc(db, 'admins', 'admin_default'), defaultAdmin);
-
-    // Reset default settings
-    const defaultSettings = {
-      costoSocio: 0.20,
-      costoUsuario: 0.30,
-      costoTrifasico: 0.00,
-      montoBase: 5.00,
-      reconexionFee: 20.00,
-      asistenciaMulta: 10.00,
-      nombreOrganizacion: 'JASS - Junta Administradora de Servicios de Saneamiento',
-      ruc: '20000000001',
-      direccion: 'Plaza de Armas S/N',
-      telefono: '999999999',
-      email: 'contacto@jass.com',
-      diasVencimiento: 15,
-      exoneraciones: {
-        social: { id: 'social', kwhThreshold: 10, discountPercentage: 100, label: 'Exoneración Social (Hasta 10 kWh/mes)' },
-        comite: { id: 'comite', kwhThreshold: 0, discountPercentage: 100, label: 'Exoneración Junta Directiva (100% Descuento)' },
-        institucional: { id: 'institucional', kwhThreshold: 0, discountPercentage: 100, label: 'Exoneración Institucional' }
+      // Reset admins collection to just default admin
+      const adminSnap = await getDocs(collection(db, 'admins'));
+      for (const docSnap of adminSnap.docs) {
+        await deleteDoc(doc(db, 'admins', docSnap.id));
       }
-    };
-    await setDoc(doc(db, 'settings', 'global'), defaultSettings);
 
-    addAuditLog('ELIMINAR', 'SISTEMA', 'Restablecimiento completo de la base de datos a estado inicial.');
+      const defaultPasswordHash = bcrypt.hashSync('admin', 10);
+      const defaultAdmin = {
+        id: 'admin_default',
+        email: 'admin@jass.com',
+        username: 'admin',
+        password: defaultPasswordHash,
+        role: 'ADMIN',
+        fullName: 'Administrador Principal',
+        dni: '00000000',
+        telefono: '000000000',
+        estado: 'ACTIVO',
+        mustChangePassword: false,
+        createdAt: new Date().toISOString()
+      };
+      await setDoc(doc(db, 'admins', 'admin_default'), defaultAdmin);
+
+      // Reset default settings
+      const defaultSettings = {
+        costoSocio: 0.20,
+        costoUsuario: 0.30,
+        costoTrifasico: 0.00,
+        montoBase: 5.00,
+        reconexionFee: 20.00,
+        asistenciaMulta: 10.00,
+        nombreOrganizacion: 'JASS - Junta Administradora de Servicios de Saneamiento',
+        ruc: '20000000001',
+        direccion: 'Plaza de Armas S/N',
+        telefono: '999999999',
+        email: 'contacto@jass.com',
+        diasVencimiento: 15,
+        exoneraciones: {
+          social: { id: 'social', kwhThreshold: 10, discountPercentage: 100, label: 'Exoneración Social (Hasta 10 kWh/mes)' },
+          comite: { id: 'comite', kwhThreshold: 0, discountPercentage: 100, label: 'Exoneración Junta Directiva (100% Descuento)' },
+          institucional: { id: 'institucional', kwhThreshold: 0, discountPercentage: 100, label: 'Exoneración Institucional' }
+        }
+      };
+      await setDoc(doc(db, 'settings', 'global'), defaultSettings);
+
+      addAuditLog('ELIMINAR', 'SISTEMA', 'Restablecimiento completo de la base de datos a estado inicial.');
+    } finally {
+      setTimeout(() => {
+        isBulkOperatingRef.current = false;
+      }, 5000);
+    }
   };
 
   const updateAdmin = async (id: string, updates: Partial<any>) => {
