@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, User, Filter, Upload, Download, FileWarning, AlertCircle, FileText, X } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
-import { Button, Card, CardContent, Badge, Pagination } from '../components/ui';
+import { Button, Card, CardContent, Badge, Pagination, ImportSummaryModal } from '../components/ui';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { Client, ClientType } from '../store/types';
 import { normalizeSearchText, normalizeSupplyCode, genericCompare, scoreClientSuppliesMatch } from '../lib/utils';
@@ -17,6 +17,23 @@ export default function Clientes() {
   const navigate = useNavigate();
   const { confirm } = useConfirm();
   const { clients, addClient, updateClient, transferSupply, markSupplyAsSocio, suppliesInfo, settings, consumptions, fines, addTransaction, userRole, meetings } = useAppContext();
+
+  // Summary modal state for bulk operations
+  const [importSummary, setImportSummary] = useState<{
+    isOpen: boolean;
+    totalRecords: number;
+    successCount: number;
+    errorCount: number;
+    skippedCount: number;
+    errors: Array<{ row?: number | string; identifier?: string; supply?: string; message: string; type?: 'error' | 'skipped' | 'duplicate' }>;
+  }>({
+    isOpen: false,
+    totalRecords: 0,
+    successCount: 0,
+    errorCount: 0,
+    skippedCount: 0,
+    errors: []
+  });
   const [searchSupplyCode, setSearchSupplyCode] = useState('');
   const [searchDniRuc, setSearchDniRuc] = useState('');
   const [searchName, setSearchName] = useState('');
@@ -487,6 +504,21 @@ export default function Clientes() {
       codigoSuministro: suministrosArray[0] || normalizeSupplyCode(formData.codigoSuministro)
     };
 
+    const actionTitle = editingId ? 'Confirmar Modificación' : 'Confirmar Registro';
+    const actionMsg = editingId 
+      ? `¿Está seguro de guardar las modificaciones realizadas al cliente "${formData.nombres} ${apellidoPaterno}"?`
+      : `¿Está seguro de registrar al nuevo cliente "${formData.nombres} ${apellidoPaterno}" (${formData.dni || 'Sin documento'})?`;
+
+    const isConfirmed = await confirm({
+      title: actionTitle,
+      message: actionMsg,
+      type: 'confirm',
+      confirmLabel: editingId ? 'Sí, guardar cambios' : 'Sí, registrar',
+      cancelLabel: 'Cancelar'
+    });
+
+    if (!isConfirmed) return;
+
     try {
       if (editingId) {
         await updateClient(editingId, clientData);
@@ -514,7 +546,7 @@ export default function Clientes() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       try {
         const bstr = evt.target?.result;
         const wb = XLSX.read(bstr, { type: 'binary' });
@@ -522,13 +554,34 @@ export default function Clientes() {
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws) as any[];
         
-        // Process records
+        if (!data || data.length === 0) {
+          toast.error('El archivo Excel no contiene registros o el formato es incorrecto.');
+          if (fileInputRef.current) fileInputRef.current.value = '';
+          return;
+        }
+
+        // 1. Confirm dialog before bulk operation
+        const confirmed = await confirm({
+          title: 'Confirmar Carga Masiva de Clientes',
+          message: `¿Está seguro de que desea realizar la importación masiva?\n\nEsta operación procesará ${data.length} registro(s) del archivo "${file.name}". Verifique que la información sea correcta antes de continuar.`,
+          type: 'warning',
+          confirmLabel: 'Sí, continuar con la carga',
+          cancelLabel: 'Cancelar'
+        });
+
+        if (!confirmed) {
+          if (fileInputRef.current) fileInputRef.current.value = '';
+          return;
+        }
+
         let processed = 0;
-        let errors = 0;
+        let errorsCount = 0;
+        let skippedCount = 0;
+        const errorList: Array<{ row?: number | string; identifier?: string; supply?: string; message: string; type?: 'error' | 'skipped' | 'duplicate' }> = [];
 
         const usedSupplyNumbers = new Set<number>();
 
-        // 1. Collect all occupied supply numbers currently in database
+        // Collect existing supply numbers
         clients.forEach(c => {
           const codes = [c.codigoSuministro, ...(c.suministros || [])].filter(Boolean) as string[];
           codes.forEach(code => {
@@ -543,7 +596,7 @@ export default function Clientes() {
           });
         });
 
-        // 2. Pre-scan incoming rows to collect explicit supply numbers provided in file
+        // Pre-scan incoming rows for supply codes
         data.forEach(row => {
           const sStr = (row.Suministro || row.suministro || row.Suministros || '').toString().trim();
           if (sStr) {
@@ -561,7 +614,6 @@ export default function Clientes() {
           }
         });
 
-        // Helper to find first available free supply number (primer correlativo sin uso)
         const getNextAvailableSupplyCode = (): string => {
           let candidate = 1;
           while (usedSupplyNumbers.has(candidate)) {
@@ -571,98 +623,134 @@ export default function Clientes() {
           return `SUM-${String(candidate).padStart(4, '0')}`;
         };
         
-        const processRows = async () => {
-          for (const row of data) {
-            // Identify fields loosely based on possible naming
-            const nombres = row.Nombres || row.nombres || row.Nombre || row.nombre || '';
-            
-            let apellidos = '';
-            if (row['Apellido Paterno'] || row['Apellido Materno'] || row.apellidoPaterno || row.apellidoMaterno) {
-              const apPaterno = row['Apellido Paterno'] || row.apellidoPaterno || '';
-              const apMaterno = row['Apellido Materno'] || row.apellidoMaterno || '';
-              apellidos = `${apPaterno} ${apMaterno}`.trim();
-            } else {
-              apellidos = row.Apellidos || row.apellidos || row.Apellido || row.apellido || '';
-            }
-            
-            const dni = (row['DNI/RUC'] || row.DNI || row.dni || row.RUC || row.ruc || row.Documento || '').toString().trim();
-            const tipoPersonaRaw = (row['Tipo Persona'] || row.tipoPersona || row.TipoPersona || '').toString().toUpperCase();
-            const tipoPersona = tipoPersonaRaw === 'EMPRESA' ? 'EMPRESA' : 'PERSONA';
-            const tipo = (row.Tipo || row.tipo || 'USUARIO').toString().toUpperCase() === 'SOCIO' ? 'SOCIO' as const : 'USUARIO' as const;
-            const suministroStr = (row.Suministro || row.suministro || row.Suministros || '').toString().trim();
-            const numeroMedidor = (row.Medidor || row.medidor || row['Numero de Medidor'] || row['Número de Medidor'] || row.numeroMedidor || '').toString().trim();
-            
-            const tipoVia = (row['Tipo Via'] || row['Tipo Vía'] || row.tipoVia || '').toString().trim();
-            const nombreVia = (row['Nombre Via'] || row['Nombre de Via'] || row['Nombre de Vía'] || row.nombreVia || '').toString().trim();
-            const sector = (row.Sector || row.sector || '').toString().trim();
-            const numeroDireccion = (row.Numero || row.numero || row.NumeroDireccion || '').toString().trim();
-            const referenciaDireccion = (row.Referencia || row.referencia || row.ReferenciaDireccion || '').toString().trim();
+        for (let i = 0; i < data.length; i++) {
+          const row = data[i];
+          const rowNum = i + 2; // header is row 1 in excel
 
-            let direccion = (row.Direccion || row.direccion || '').toString().trim();
-            if (!direccion && (tipoVia || nombreVia)) {
-              const viaCombined = `${tipoVia} ${nombreVia}`.trim();
-              direccion = `${viaCombined}${numeroDireccion ? ` N° ${numeroDireccion}` : ''}${sector ? ` - ${sector}` : ''}`;
-            }
-
-            const faseRaw = (row['Fase Suministro'] || row.Fase || row['Tipo de Servicio'] || row.faseSuministro || 'MONOFASICO').toString().toUpperCase();
-            const faseSuministro = (faseRaw.includes('TRIFASICO') || faseRaw === 'TRIFASICO') ? 'TRIFASICO' as const : 'MONOFASICO' as const;
-            
-            if (nombres || apellidos || dni) {
-              let suministrosArray = suministroStr.split(',').map((s: string) => normalizeSupplyCode(s)).filter((s: string) => s);
-              
-              // Si el cliente no cuenta con suministro en el archivo, se asigna el primer número disponible (libre)
-              if (suministrosArray.length === 0) {
-                const autoCode = getNextAvailableSupplyCode();
-                suministrosArray = [autoCode];
-              }
-
-              try {
-                await addClient({
-                  nombres,
-                  apellidos,
-                  tipoPersona,
-                  dni,
-                  tipo,
-                  estado: 'ACTIVO',
-                  direccion,
-                  numeroDireccion,
-                  referenciaDireccion,
-                  telefono: (row.Telefono || row.telefono || '').toString().trim(),
-                  correo: (row.Correo || row.correo || row.Email || row.email || '').toString().trim(),
-                  codigoSuministro: suministrosArray[0] || '',
-                  suministros: suministrosArray,
-                  numeroMedidor: numeroMedidor || undefined,
-                  faseSuministro,
-                  tipoVia,
-                  nombreVia,
-                  sector
-                });
-                processed++;
-              } catch (err: any) {
-                console.error('Error importing row:', err);
-                toast.error(`Error en fila (${dni || nombres}): ${err.message}`);
-                errors++;
-              }
-            }
+          const nombres = (row.Nombres || row.nombres || row.Nombre || row.nombre || '').toString().trim();
+          
+          let apellidos = '';
+          if (row['Apellido Paterno'] || row['Apellido Materno'] || row.apellidoPaterno || row.apellidoMaterno) {
+            const apPaterno = row['Apellido Paterno'] || row.apellidoPaterno || '';
+            const apMaterno = row['Apellido Materno'] || row.apellidoMaterno || '';
+            apellidos = `${apPaterno} ${apMaterno}`.trim();
+          } else {
+            apellidos = (row.Apellidos || row.apellidos || row.Apellido || row.apellido || '').toString().trim();
           }
           
-          if (processed > 0) {
-            toast.success(`Se importaron ${processed} registros correctamente.` + (errors > 0 ? ` Hubo ${errors} errores.` : ''));
-            setTimeout(() => window.location.reload(), 2000); // Wait for toast to display briefly
-          } else if (errors > 0) {
-            toast.error(`No se importaron registros. Hubo ${errors} errores.`);
+          const dni = (row['DNI/RUC'] || row.DNI || row.dni || row.RUC || row.ruc || row.Documento || '').toString().trim();
+          const tipoPersonaRaw = (row['Tipo Persona'] || row.tipoPersona || row.TipoPersona || '').toString().toUpperCase();
+          const tipoPersona = tipoPersonaRaw === 'EMPRESA' ? 'EMPRESA' : 'PERSONA';
+          const tipo = (row.Tipo || row.tipo || 'USUARIO').toString().toUpperCase() === 'SOCIO' ? 'SOCIO' as const : 'USUARIO' as const;
+          const suministroStr = (row.Suministro || row.suministro || row.Suministros || '').toString().trim();
+          const numeroMedidor = (row.Medidor || row.medidor || row['Numero de Medidor'] || row['Número de Medidor'] || row.numeroMedidor || '').toString().trim();
+          
+          const tipoVia = (row['Tipo Via'] || row['Tipo Vía'] || row.tipoVia || '').toString().trim();
+          const nombreVia = (row['Nombre Via'] || row['Nombre de Via'] || row['Nombre de Vía'] || row.nombreVia || '').toString().trim();
+          const sector = (row.Sector || row.sector || '').toString().trim();
+          const numeroDireccion = (row.Numero || row.numero || row.NumeroDireccion || '').toString().trim();
+          const referenciaDireccion = (row.Referencia || row.referencia || row.ReferenciaDireccion || '').toString().trim();
+
+          let direccion = (row.Direccion || row.direccion || '').toString().trim();
+          if (!direccion && (tipoVia || nombreVia)) {
+            const viaCombined = `${tipoVia} ${nombreVia}`.trim();
+            direccion = `${viaCombined}${numeroDireccion ? ` N° ${numeroDireccion}` : ''}${sector ? ` - ${sector}` : ''}`;
           }
-        };
+
+          const faseRaw = (row['Fase Suministro'] || row.Fase || row['Tipo de Servicio'] || row.faseSuministro || 'MONOFASICO').toString().toUpperCase();
+          const faseSuministro = (faseRaw.includes('TRIFASICO') || faseRaw === 'TRIFASICO') ? 'TRIFASICO' as const : 'MONOFASICO' as const;
+          
+          const fullName = `${nombres} ${apellidos}`.trim() || 'Sin Nombre';
+
+          if (!nombres && !apellidos && !dni) {
+            skippedCount++;
+            errorList.push({
+              row: rowNum,
+              identifier: 'Fila Vacía / Incompleta',
+              message: 'No contiene nombres, apellidos ni documento DNI/RUC.',
+              type: 'skipped'
+            });
+            continue;
+          }
+
+          let suministrosArray = suministroStr.split(',').map((s: string) => normalizeSupplyCode(s)).filter((s: string) => s);
+          
+          if (suministrosArray.length === 0) {
+            const autoCode = getNextAvailableSupplyCode();
+            suministrosArray = [autoCode];
+          }
+
+          try {
+            await addClient({
+              nombres,
+              apellidos,
+              tipoPersona,
+              dni,
+              tipo,
+              estado: 'ACTIVO',
+              direccion,
+              numeroDireccion,
+              referenciaDireccion,
+              telefono: (row.Telefono || row.telefono || '').toString().trim(),
+              correo: (row.Correo || row.correo || row.Email || row.email || '').toString().trim(),
+              codigoSuministro: suministrosArray[0] || '',
+              suministros: suministrosArray,
+              numeroMedidor: numeroMedidor || undefined,
+              faseSuministro,
+              tipoVia,
+              nombreVia,
+              sector
+            });
+            processed++;
+          } catch (err: any) {
+            const errMsg = err.message || 'Error al guardar el cliente.';
+            if (errMsg.toLowerCase().includes('registrado') || errMsg.toLowerCase().includes('existe')) {
+              skippedCount++;
+              errorList.push({
+                row: rowNum,
+                identifier: `${fullName} (DNI ${dni || 'N/A'})`,
+                supply: suministrosArray.join(', '),
+                message: errMsg,
+                type: 'duplicate'
+              });
+            } else {
+              errorsCount++;
+              errorList.push({
+                row: rowNum,
+                identifier: `${fullName} (DNI ${dni || 'N/A'})`,
+                supply: suministrosArray.join(', '),
+                message: errMsg,
+                type: 'error'
+              });
+            }
+          }
+        }
         
-        processRows();
+        // Present single summary popup
+        setImportSummary({
+          isOpen: true,
+          totalRecords: data.length,
+          successCount: processed,
+          errorCount: errorsCount,
+          skippedCount,
+          errors: errorList
+        });
+
+        if (processed > 0) {
+          toast.success(`Carga masiva finalizada: ${processed} registro(s) procesados correctamente.`);
+        } else {
+          toast.error('La carga masiva finalizó sin ningún registro procesado. Consulte el reporte.');
+        }
       } catch (err) {
         console.error(err);
         toast.error('Hubo un error importando el archivo.');
+      } finally {
+        if (fileInputRef.current) fileInputRef.current.value = '';
       }
     };
     reader.readAsBinaryString(file);
-    if(fileInputRef.current) fileInputRef.current.value = '';
   };
+
 
   const handleDownloadTemplate = (rowsCount: number = 100) => {
     const firstNames = ['Juan', 'Maria', 'Carlos', 'Ana', 'Jose', 'Rosa', 'Luis', 'Carmen', 'Jorge', 'Patricia', 'Pedro', 'Lucia', 'Miguel', 'Elena', 'Fernando', 'Sofia', 'Diego', 'Valeria', 'Manuel', 'Sonia', 'Ramon', 'Teresa', 'Victor', 'Yolanda', 'Raul', 'Isabel', 'Gonzalo', 'Gisela', 'Hector', 'Norma'];
@@ -1743,6 +1831,18 @@ export default function Clientes() {
           </div>
         </div>
       )}
+
+      {/* Grouped Notifications Summary Modal for Bulk Import */}
+      <ImportSummaryModal
+        isOpen={importSummary.isOpen}
+        onClose={() => setImportSummary(prev => ({ ...prev, isOpen: false }))}
+        totalRecords={importSummary.totalRecords}
+        successCount={importSummary.successCount}
+        errorCount={importSummary.errorCount}
+        skippedCount={importSummary.skippedCount}
+        errors={importSummary.errors}
+        title="Resumen de Importación Masiva de Clientes"
+      />
     </div>
   );
 }

@@ -68,3 +68,5 @@ export function Badge({ className, variant = 'default', children }: { className?
 }
 
 export { Pagination } from './Pagination';
+export { ImportSummaryModal } from './ImportSummaryModal';
+export { ConfirmProvider, useConfirm } from './ConfirmDialog';
