@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings, Save, KeyRound, Database, BookOpen, Download } from 'lucide-react';
+import { Settings, Save, KeyRound, Database, BookOpen, Download, Trash2 } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import { Card, CardContent, CardTitle, Button } from '../components/ui';
 import { useConfirm } from '../components/ui/ConfirmDialog';
@@ -12,7 +12,7 @@ import ManualCapture from '../components/ManualCapture';
 import ComiteDirectivo from '../components/ComiteDirectivo';
 
 export default function Configuracion() {
-  const { settings, updateSettings, userRole, user, updateAdmin, admins, mustChangePassword, seedDatabaseFromBackup, initializeCounter } = useAppContext();
+  const { settings, updateSettings, userRole, user, updateAdmin, admins, mustChangePassword, seedDatabaseFromBackup, resetDatabase, initializeCounter } = useAppContext();
   const { confirm } = useConfirm();
   const [configTab, setConfigTab] = useState<'operativa' | 'comite' | 'cuenta' | 'datos_manuales'>(() => {
     if (userRole === 'OPERATOR') return 'cuenta';
@@ -174,6 +174,29 @@ export default function Configuracion() {
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleResetDatabase = async () => {
+    const isConfirmed = await confirm({
+      title: '⚠ ¿Vaciar y restablecer toda la base de datos a cero?',
+      message: 'Esta operación es IRREVERSIBLE.\n\nSe eliminarán TODOS los registros del sistema: clientes, lecturas, consumos, recibos, multas, transacciones de caja, reuniones, comités y trabajadores.\n\nSe restablecerá únicamente el usuario administrador inicial (admin@jass.com / admin) para que pueda empezar nuevamente desde cero.\n\n¿Está seguro de continuar?',
+      type: 'danger',
+      confirmLabel: 'Sí, vaciar y empezar de cero',
+      cancelLabel: 'Cancelar'
+    });
+
+    if (!isConfirmed) return;
+
+    const toastId = toast.loading('Eliminando todos los datos en Firestore...');
+    try {
+      await resetDatabase();
+      toast.success('Base de datos restablecida a cero con éxito. Recargando...', { id: toastId });
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } catch (error: any) {
+      toast.error('Error al intentar vaciar la base de datos: ' + (error.message || 'Error desconocido'), { id: toastId });
+    }
   };
 
   const handleInitCounter = async (e: React.FormEvent) => {
@@ -852,6 +875,36 @@ export default function Configuracion() {
           </div>
         </CardContent>
       </Card>
+      )}
+
+      {(!mustChangePassword && configTab === 'datos_manuales' && userRole === 'ADMIN') && (
+        <Card className="border-red-500/30 bg-red-950/10">
+          <CardContent className="p-6">
+            <div className="space-y-4">
+              <h3 className="text-lg font-bold text-red-400 border-b border-red-500/30 pb-2 flex items-center">
+                <Trash2 className="w-5 h-5 mr-2 text-red-500" />
+                Vaciar y Restablecer Base de Datos (Empezar de Cero)
+              </h3>
+              <p className="text-sm text-slate-300">
+                Elimina permanentemente toda la información de la base de datos (clientes, suministros, consumos, recibos, multas, transacciones, reuniones, trabajadores y comités) para iniciar una nueva instalación completamente limpia.
+              </p>
+              <div>
+                <Button 
+                  type="button" 
+                  variant="danger" 
+                  onClick={handleResetDatabase}
+                  className="bg-red-600 hover:bg-red-700 text-white font-semibold flex items-center gap-2 border border-red-500/50 shadow-lg shadow-red-950/50"
+                >
+                  <Trash2 className="w-4 h-4 text-white" />
+                  Vaciar Base de Datos (Empezar de Cero)
+                </Button>
+              </div>
+              <p className="text-xs text-red-400/90">
+                <strong>Advertencia:</strong> Esta acción no se puede deshacer. Se preservará únicamente el usuario administrador inicial (<code>admin@jass.com</code> / contraseña: <code>admin</code>).
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {(!mustChangePassword && configTab === 'datos_manuales' && userRole === 'ADMIN') && (

@@ -7,6 +7,7 @@ import {
   setDoc, 
   updateDoc, 
   deleteDoc, 
+  getDocs,
   onSnapshot, 
   runTransaction,
   writeBatch
@@ -65,6 +66,7 @@ interface AppContextType extends AppState {
   addPagoSueldo: (pago: Omit<PagoSueldo, 'id' | 'fechaPago' | 'comprobante' | 'createdBy'>) => Promise<PagoSueldo>;
   initializeCounter: (counterId: string, startValue: number) => Promise<void>;
   seedDatabaseFromBackup: (backupData: any) => Promise<void>;
+  resetDatabase: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -420,6 +422,75 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     addAuditLog('CREAR', 'SISTEMA', 'Sembrado y aprovisionamiento manual de base de datos desde respaldo');
+  };
+
+  const resetDatabase = async () => {
+    const collectionsToClear = [
+      'clients',
+      'consumptions',
+      'transactions',
+      'meetings',
+      'fines',
+      'auditLogs',
+      'suppliesInfo',
+      'comites',
+      'trabajadores',
+      'pagosSueldos',
+      'counters'
+    ];
+
+    for (const colName of collectionsToClear) {
+      const snap = await getDocs(collection(db, colName));
+      for (const docSnap of snap.docs) {
+        await deleteDoc(doc(db, colName, docSnap.id));
+      }
+    }
+
+    // Reset admins collection to just default admin
+    const adminSnap = await getDocs(collection(db, 'admins'));
+    for (const docSnap of adminSnap.docs) {
+      await deleteDoc(doc(db, 'admins', docSnap.id));
+    }
+
+    const defaultPasswordHash = bcrypt.hashSync('admin', 10);
+    const defaultAdmin = {
+      id: 'admin_default',
+      email: 'admin@jass.com',
+      username: 'admin',
+      password: defaultPasswordHash,
+      role: 'ADMIN',
+      fullName: 'Administrador Principal',
+      dni: '00000000',
+      telefono: '000000000',
+      estado: 'ACTIVO',
+      mustChangePassword: false,
+      createdAt: new Date().toISOString()
+    };
+    await setDoc(doc(db, 'admins', 'admin_default'), defaultAdmin);
+
+    // Reset default settings
+    const defaultSettings = {
+      costoSocio: 0.20,
+      costoUsuario: 0.30,
+      costoTrifasico: 0.00,
+      montoBase: 5.00,
+      reconexionFee: 20.00,
+      asistenciaMulta: 10.00,
+      nombreOrganizacion: 'JASS - Junta Administradora de Servicios de Saneamiento',
+      ruc: '20000000001',
+      direccion: 'Plaza de Armas S/N',
+      telefono: '999999999',
+      email: 'contacto@jass.com',
+      diasVencimiento: 15,
+      exoneraciones: {
+        social: { id: 'social', kwhThreshold: 10, discountPercentage: 100, label: 'Exoneración Social (Hasta 10 kWh/mes)' },
+        comite: { id: 'comite', kwhThreshold: 0, discountPercentage: 100, label: 'Exoneración Junta Directiva (100% Descuento)' },
+        institucional: { id: 'institucional', kwhThreshold: 0, discountPercentage: 100, label: 'Exoneración Institucional' }
+      }
+    };
+    await setDoc(doc(db, 'settings', 'global'), defaultSettings);
+
+    addAuditLog('ELIMINAR', 'SISTEMA', 'Restablecimiento completo de la base de datos a estado inicial.');
   };
 
   const updateAdmin = async (id: string, updates: Partial<any>) => {
@@ -1430,7 +1501,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updateTrabajador,
       addPagoSueldo,
       initializeCounter,
-      seedDatabaseFromBackup
+      seedDatabaseFromBackup,
+      resetDatabase
     }}>
       {children}
     </AppContext.Provider>
