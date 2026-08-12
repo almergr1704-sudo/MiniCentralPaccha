@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Plus, Users, Calendar, AlertCircle, FileText, CheckCircle, Download, XCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import { Button, Card, CardContent, Badge, CardHeader, CardTitle, Pagination } from '../components/ui';
@@ -8,6 +8,7 @@ import { es } from 'date-fns/locale';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { toast } from 'react-hot-toast';
+import { useFormPristine } from '../hooks/useFormPristine';
 
 export default function Reuniones() {
   const { confirm } = useConfirm();
@@ -39,6 +40,19 @@ export default function Reuniones() {
     temas: '',
     invitados: 'SOCIO'
   });
+
+  const currentMeetingState = useMemo(() => formData, [formData]);
+
+  const initialMeetingState = useMemo(() => ({
+    fecha: new Date().toISOString().slice(0, 16),
+    horaTermino: new Date(Date.now() + 3600000).toISOString().slice(0, 16),
+    motivo: '',
+    lugar: '',
+    temas: '',
+    invitados: 'SOCIO' as const
+  }), []);
+
+  const { isDirty: isMeetingDirty } = useFormPristine(initialMeetingState, currentMeetingState);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -609,7 +623,14 @@ export default function Reuniones() {
                   </div>
                 </div>
                 <div className="bg-slate-800/50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse gap-3">
-                  <Button type="submit" variant="primary" className="w-full sm:ml-3 sm:w-auto">Crear Reunión</Button>
+                  <Button 
+                    type="submit" 
+                    variant="primary" 
+                    disabled={!isMeetingDirty}
+                    className="w-full sm:ml-3 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Crear Reunión
+                  </Button>
                   <Button type="button" variant="cancel" onClick={() => setIsModalOpen(false)} className="mt-3 w-full sm:mt-0 sm:w-auto">Cancelar</Button>
                 </div>
               </form>

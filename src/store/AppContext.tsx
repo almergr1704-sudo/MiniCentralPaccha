@@ -486,6 +486,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateAdmin = async (id: string, updates: Partial<any>) => {
+    if (updates.rawPasswordToCheck) {
+      const existingAdmin = state.admins.find(a => a.id === id);
+      if (existingAdmin && existingAdmin.password) {
+        let isSame = false;
+        try {
+          isSame = existingAdmin.password === updates.rawPasswordToCheck || bcrypt.compareSync(updates.rawPasswordToCheck, existingAdmin.password);
+        } catch {
+          isSame = existingAdmin.password === updates.rawPasswordToCheck;
+        }
+        if (isSame) {
+          throw new Error('La nueva contraseña no puede ser igual a la contraseña actual. Por favor, ingresa una contraseña diferente.');
+        }
+      }
+      delete updates.rawPasswordToCheck;
+    }
+
     if (updates.dni) {
       const existing = state.admins.find(a => a.dni === updates.dni && a.id !== id);
       if (existing) {

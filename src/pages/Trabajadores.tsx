@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../store/AppContext';
 import { Trabajador, PagoSueldo } from '../store/types';
 import { 
@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { generatePayrollReceiptPDF } from '../lib/receipts';
+import { useFormPristine } from '../hooks/useFormPristine';
 
 export default function Trabajadores() {
   const { 
@@ -44,6 +45,42 @@ export default function Trabajadores() {
     observaciones: '',
     estado: 'ACTIVO' as 'ACTIVO' | 'INACTIVO'
   });
+
+  const currentWorkerModalState = useMemo(() => workerForm, [workerForm]);
+
+  const initialWorkerModalState = useMemo(() => {
+    if (editingWorkerId && trabajadores) {
+      const w = trabajadores.find(item => item.id === editingWorkerId);
+      if (w) {
+        return {
+          nombres: w.nombres || '',
+          apellidos: w.apellidos || '',
+          dni: w.dni || '',
+          cargo: w.cargo || '',
+          sueldoMensual: w.sueldoMensual || 0,
+          telefono: w.telefono || '',
+          correo: w.correo || '',
+          direccion: w.direccion || '',
+          observaciones: w.observaciones || '',
+          estado: w.estado || 'ACTIVO'
+        };
+      }
+    }
+    return {
+      nombres: '',
+      apellidos: '',
+      dni: '',
+      cargo: '',
+      sueldoMensual: 0,
+      telefono: '',
+      correo: '',
+      direccion: '',
+      observaciones: '',
+      estado: 'ACTIVO' as 'ACTIVO' | 'INACTIVO'
+    };
+  }, [editingWorkerId, trabajadores]);
+
+  const { isDirty: isWorkerModalDirty } = useFormPristine(initialWorkerModalState, currentWorkerModalState);
 
   // Report States: Selected month, worker, year for filtering
   const [reportMonth, setReportMonth] = useState(() => {
@@ -737,7 +774,8 @@ export default function Trabajadores() {
                 <div className="bg-slate-900/60 px-6 py-3 sm:flex sm:flex-row-reverse sm:gap-3 border-t border-slate-800">
                   <button
                     type="submit"
-                    className="w-full inline-flex justify-center rounded-lg border border-emerald-500/30 shadow-sm px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-sm font-semibold text-white focus:outline-none sm:w-auto cursor-pointer"
+                    disabled={!isWorkerModalDirty}
+                    className="w-full inline-flex justify-center rounded-lg border border-emerald-500/30 shadow-sm px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-sm font-semibold text-white focus:outline-none sm:w-auto cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Guardar Cambios
                   </button>

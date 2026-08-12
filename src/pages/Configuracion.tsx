@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Settings, Save, KeyRound, Database, BookOpen, Download, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Settings, Save, KeyRound, Database, BookOpen, Download, Trash2, RotateCcw } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import { Card, CardContent, CardTitle, Button } from '../components/ui';
 import { useConfirm } from '../components/ui/ConfirmDialog';
@@ -10,6 +10,7 @@ import { PasswordStrengthIndicator, evaluatePasswordStrength } from '../componen
 import html2canvas from 'html2canvas';
 import ManualCapture from '../components/ManualCapture';
 import ComiteDirectivo from '../components/ComiteDirectivo';
+import { useFormPristine } from '../hooks/useFormPristine';
 
 export default function Configuracion() {
   const { settings, updateSettings, userRole, user, updateAdmin, admins, mustChangePassword, seedDatabaseFromBackup, resetDatabase, initializeCounter } = useAppContext();
@@ -19,15 +20,24 @@ export default function Configuracion() {
     return userRole === 'ADMIN' ? 'operativa' : 'comite';
   });
   const [isCapturing, setIsCapturing] = useState(false);
-  const [formData, setFormData] = useState({
-    costoSocio: 0.20,
-    costoUsuario: 0.30,
-    costoTrifasico: 0.00,
-    multaReunion: 40,
-    costoReconexion: 0.00,
-    consumoMinimo: 6.00,
-    ventaNuevoServicio: 0.00
-  });
+
+  const initialSettings = useMemo(() => ({
+    costoSocio: settings?.costoSocio ?? 0.20,
+    costoUsuario: settings?.costoUsuario ?? 0.30,
+    costoTrifasico: settings?.costoTrifasico ?? 0.00,
+    multaReunion: settings?.multaReunion ?? 40,
+    costoReconexion: settings?.costoReconexion ?? 0.00,
+    consumoMinimo: settings?.consumoMinimo ?? 6.00,
+    ventaNuevoServicio: settings?.ventaNuevoServicio ?? 0.00
+  }), [settings]);
+
+  const [formData, setFormData] = useState(initialSettings);
+
+  useEffect(() => {
+    setFormData(initialSettings);
+  }, [initialSettings]);
+
+  const { isDirty: isConfigDirty, markSaved: markConfigSaved, resetToInitial: resetConfig } = useFormPristine(initialSettings, formData);
 
   const [counterPrefix, setCounterPrefix] = useState<'REC' | 'S' | 'VS' | 'TR'>('REC');
   const [counterSuffix, setCounterSuffix] = useState(new Date().toISOString().slice(0, 7));
@@ -40,22 +50,9 @@ export default function Configuracion() {
     confirmPassword: ''
   });
 
-  useEffect(() => {
-    if (settings) {
-      setFormData({
-        costoSocio: settings.costoSocio ?? 0.20,
-        costoUsuario: settings.costoUsuario ?? 0.30,
-        costoTrifasico: settings.costoTrifasico ?? 0.00,
-        multaReunion: settings.multaReunion ?? 40,
-        costoReconexion: settings.costoReconexion ?? 0.00,
-        consumoMinimo: settings.consumoMinimo ?? 6.00,
-        ventaNuevoServicio: settings.ventaNuevoServicio ?? 0.00
-      });
-    }
-  }, [settings]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isConfigDirty) return;
     if (userRole === 'OPERATOR' || userRole === 'FISCALIZADOR') {
       toast.error('No tiene permisos para modificar la configuración.');
       return;
@@ -73,6 +70,7 @@ export default function Configuracion() {
 
     try {
       await updateSettings(formData);
+      markConfigSaved(formData);
       toast.success('✅ La información se guardó correctamente.');
     } catch {
       toast.error('❌ No se pudo guardar la información. Verifique los datos e inténtelo nuevamente.');
@@ -109,6 +107,18 @@ export default function Configuracion() {
       return;
     }
 
+    // Validar que la nueva contraseña no sea igual a la contraseña actual
+    const isSamePassword = passwordForm.newPassword === passwordForm.currentPassword || 
+      (currentAdmin.password && (
+        currentAdmin.password === passwordForm.newPassword || 
+        bcrypt.compareSync(passwordForm.newPassword, currentAdmin.password)
+      ));
+
+    if (isSamePassword) {
+      toast.error('❌ La nueva contraseña no puede ser igual a la contraseña actual. Por favor, ingresa una contraseña diferente.');
+      return;
+    }
+
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
       toast.error('Las contraseñas no coinciden.');
       return;
@@ -125,6 +135,7 @@ export default function Configuracion() {
     const hashedPassword = bcrypt.hashSync(passwordForm.newPassword, 10);
     await updateAdmin(currentAdmin.id, { 
       password: hashedPassword, 
+      rawPasswordToCheck: passwordForm.newPassword,
       mustChangePassword: false,
       lastPasswordChangeLog: isFirstTimeChange 
         ? `Cambio obligatorio de contraseña realizado en primer inicio el ${new Date().toLocaleString()}`
@@ -762,8 +773,23 @@ export default function Configuracion() {
               </div>
 
             </div>
-            <div className="flex justify-end pt-4 border-t border-slate-800">
-              <Button type="submit">
+            <div className="flex justify-end items-center space-x-3 pt-4 border-t border-slate-800">
+              {isConfigDirty && (
+                <Button 
+                  type="button" 
+                  variant="cancel"
+                  onClick={() => setFormData(resetConfig())}
+                  className="flex items-center"
+                >
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  Restablecer Cambios
+                </Button>
+              )}
+              <Button 
+                type="submit" 
+                disabled={!isConfigDirty}
+                className="disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 <Save className="w-4 h-4 mr-2" />
                 Guardar Configuración
               </Button>
@@ -777,85 +803,115 @@ export default function Configuracion() {
         <ComiteDirectivo />
       )}
 
-      {(mustChangePassword || configTab === 'cuenta') && (
-      <Card>
-        <CardContent className="p-6">
-          <form onSubmit={handlePasswordChange} className="space-y-6">
-            <h3 className="text-lg font-medium text-slate-200 border-b border-slate-700 pb-2 flex items-center">
-              <KeyRound className="w-5 h-5 mr-2 text-slate-400" />
-              Cambiar mi Contraseña
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-slate-300">Contraseña Actual</label>
-                <div className="mt-1">
-                  <input 
-                    type="password"
-                    required
-                    value={passwordForm.currentPassword}
-                    onChange={(e) => setPasswordForm(prev => ({ ...prev, currentPassword: e.target.value }))}
-                    className="block w-full max-w-md bg-[#0B0E14] border border-slate-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-slate-100 placeholder-slate-500" 
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-300">Nueva Contraseña</label>
-                <div className="mt-1">
-                  <input 
-                    type="password"
-                    required
-                    minLength={8}
-                    value={passwordForm.newPassword}
-                    onChange={(e) => setPasswordForm(prev => ({ ...prev, newPassword: e.target.value }))}
-                    className="block w-full bg-[#0B0E14] border border-slate-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-slate-100 placeholder-slate-500" 
-                    placeholder="Mínimo 8 caracteres, alfanuméricos y especiales"
-                  />
-                </div>
-                <PasswordStrengthIndicator passwordStr={passwordForm.newPassword} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-300">Confirmar Nueva Contraseña</label>
-                <div className="mt-1">
-                  <input 
-                    type="password"
-                    required
-                    minLength={8}
-                    value={passwordForm.confirmPassword}
-                    onChange={(e) => setPasswordForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                    className={`block w-full bg-[#0B0E14] border ${
-                      passwordForm.confirmPassword 
-                        ? (passwordForm.newPassword === passwordForm.confirmPassword 
-                          ? 'border-emerald-500/50 focus:border-emerald-500 focus:ring-emerald-500' 
-                          : 'border-red-500/50 focus:border-red-500 focus:ring-red-500')
-                        : 'border-slate-600 focus:border-blue-500 focus:ring-blue-500'
-                    } rounded-md shadow-sm py-2 px-3 focus:outline-none sm:text-sm text-slate-100 placeholder-slate-500`}
-                  />
-                </div>
-                {passwordForm.confirmPassword !== '' && passwordForm.newPassword !== passwordForm.confirmPassword && (
-                    <p className="mt-1 text-sm font-medium text-red-500 flex items-center justify-start">
-                      ✗ Las contraseñas no coinciden
-                    </p>
+      {(mustChangePassword || configTab === 'cuenta') && (() => {
+        const isSamePassword = Boolean(
+          passwordForm.currentPassword &&
+          passwordForm.newPassword &&
+          passwordForm.newPassword === passwordForm.currentPassword
+        );
+        return (
+          <Card>
+            <CardContent className="p-6">
+              <form onSubmit={handlePasswordChange} className="space-y-6">
+                <h3 className="text-lg font-medium text-slate-200 border-b border-slate-700 pb-2 flex items-center">
+                  <KeyRound className="w-5 h-5 mr-2 text-slate-400" />
+                  {mustChangePassword ? 'Cambio Obligatorio de Contraseña' : 'Cambiar mi Contraseña'}
+                </h3>
+                {mustChangePassword && (
+                  <div className="bg-amber-950/40 border border-amber-800/50 text-amber-300 p-3.5 rounded-lg text-sm flex items-start space-x-2">
+                    <span className="text-amber-400 font-bold text-base leading-none">⚠️</span>
+                    <div>
+                      <strong>Cambio de clave requerido:</strong> Por razones de seguridad, es obligatorio actualizar su contraseña inicial antes de continuar utilizando el sistema.
+                    </div>
+                  </div>
                 )}
-                {passwordForm.confirmPassword !== '' && passwordForm.newPassword === passwordForm.confirmPassword && (
-                    <p className="mt-1 text-sm font-medium text-emerald-500 flex items-center justify-start">
-                      ✓ Las contraseñas coinciden
-                    </p>
-                )}
-              </div>
-            </div>
-            <div className="flex justify-end pt-4 border-t border-slate-800">
-              <Button 
-                type="submit" 
-                className="bg-slate-700 hover:bg-slate-600 text-white border-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={passwordForm.newPassword !== passwordForm.confirmPassword || !passwordForm.newPassword || !passwordForm.confirmPassword}
-              >
-                Actualizar Contraseña
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-      )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-slate-300">Contraseña Actual</label>
+                    <div className="mt-1">
+                      <input 
+                        type="password"
+                        required
+                        value={passwordForm.currentPassword}
+                        onChange={(e) => setPasswordForm(prev => ({ ...prev, currentPassword: e.target.value }))}
+                        className="block w-full max-w-md bg-[#0B0E14] border border-slate-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-slate-100 placeholder-slate-500" 
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300">Nueva Contraseña</label>
+                    <div className="mt-1">
+                      <input 
+                        type="password"
+                        required
+                        minLength={8}
+                        value={passwordForm.newPassword}
+                        onChange={(e) => setPasswordForm(prev => ({ ...prev, newPassword: e.target.value }))}
+                        className={`block w-full bg-[#0B0E14] border ${
+                          isSamePassword 
+                            ? 'border-red-500/50 focus:border-red-500 focus:ring-red-500' 
+                            : 'border-slate-600 focus:border-blue-500 focus:ring-blue-500'
+                        } rounded-md shadow-sm py-2 px-3 focus:outline-none sm:text-sm text-slate-100 placeholder-slate-500`}
+                        placeholder="Mínimo 8 caracteres, alfanuméricos y especiales"
+                      />
+                    </div>
+                    {isSamePassword && (
+                      <p className="mt-1.5 text-xs font-semibold text-red-400 flex items-center justify-start bg-red-950/40 p-2.5 rounded border border-red-800/50">
+                        ❌ La nueva contraseña no puede ser igual a la contraseña actual. Por favor, ingresa una contraseña diferente.
+                      </p>
+                    )}
+                    <PasswordStrengthIndicator passwordStr={passwordForm.newPassword} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300">Confirmar Nueva Contraseña</label>
+                    <div className="mt-1">
+                      <input 
+                        type="password"
+                        required
+                        minLength={8}
+                        value={passwordForm.confirmPassword}
+                        onChange={(e) => setPasswordForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                        className={`block w-full bg-[#0B0E14] border ${
+                          passwordForm.confirmPassword 
+                            ? (passwordForm.newPassword === passwordForm.confirmPassword && !isSamePassword
+                              ? 'border-emerald-500/50 focus:border-emerald-500 focus:ring-emerald-500' 
+                              : 'border-red-500/50 focus:border-red-500 focus:ring-red-500')
+                            : 'border-slate-600 focus:border-blue-500 focus:ring-blue-500'
+                        } rounded-md shadow-sm py-2 px-3 focus:outline-none sm:text-sm text-slate-100 placeholder-slate-500`}
+                      />
+                    </div>
+                    {passwordForm.confirmPassword !== '' && passwordForm.newPassword !== passwordForm.confirmPassword && (
+                        <p className="mt-1 text-sm font-medium text-red-500 flex items-center justify-start">
+                          ✗ Las contraseñas no coinciden
+                        </p>
+                    )}
+                    {passwordForm.confirmPassword !== '' && passwordForm.newPassword === passwordForm.confirmPassword && !isSamePassword && (
+                        <p className="mt-1 text-sm font-medium text-emerald-500 flex items-center justify-start">
+                          ✓ Las contraseñas coinciden
+                        </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex justify-end pt-4 border-t border-slate-800">
+                  <Button 
+                    type="submit" 
+                    className="bg-slate-700 hover:bg-slate-600 text-white border-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={
+                      !passwordForm.currentPassword || 
+                      !passwordForm.newPassword || 
+                      !passwordForm.confirmPassword || 
+                      passwordForm.newPassword !== passwordForm.confirmPassword || 
+                      isSamePassword
+                    }
+                  >
+                    Actualizar Contraseña
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {(!mustChangePassword && configTab === 'datos_manuales' && userRole === 'ADMIN') && (
         <Card>

@@ -13,6 +13,7 @@ import { ClientFormFields } from '../components/ClientFormFields';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
+import { useFormPristine } from '../hooks/useFormPristine';
 
 export default function Clientes() {
   const navigate = useNavigate();
@@ -92,6 +93,55 @@ export default function Clientes() {
     sector: ''
   };
   const [formData, setFormData] = useState<Omit<Client, 'id' | 'fechaRegistro'>>(initialFormState);
+
+  const currentClientModalState = useMemo(() => ({
+    formData,
+    apellidoPaterno,
+    apellidoMaterno,
+    suministrosStr
+  }), [formData, apellidoPaterno, apellidoMaterno, suministrosStr]);
+
+  const initialClientModalState = useMemo(() => {
+    if (editingId && clients) {
+      const c = clients.find(item => item.id === editingId);
+      if (c) {
+        const aps = c.apellidos || c.nombre?.split(' ').slice(1).join(' ') || '';
+        const parts = aps.split(' ');
+        return {
+          formData: {
+            nombres: c.nombres || c.nombre?.split(' ')[0] || '',
+            apellidos: aps,
+            tipoPersona: c.tipoPersona || 'PERSONA',
+            dni: c.dni || '',
+            direccion: c.direccion || '',
+            numeroDireccion: c.numeroDireccion || '',
+            referenciaDireccion: c.referenciaDireccion || '',
+            telefono: c.telefono || '',
+            correo: c.correo || '',
+            codigoSuministro: c.codigoSuministro || '',
+            suministros: c.suministros || [],
+            numeroMedidor: c.numeroMedidor || '',
+            tipo: c.tipo || 'USUARIO',
+            estado: c.estado || 'ACTIVO',
+            tipoVia: c.tipoVia || '',
+            nombreVia: c.nombreVia || (c.tipoVia ? '' : c.direccion) || '',
+            sector: c.sector || ''
+          },
+          apellidoPaterno: parts[0] || '',
+          apellidoMaterno: parts.slice(1).join(' ') || '',
+          suministrosStr: (c.suministros || [c.codigoSuministro]).join(', ')
+        };
+      }
+    }
+    return {
+      formData: initialFormState,
+      apellidoPaterno: '',
+      apellidoMaterno: '',
+      suministrosStr: ''
+    };
+  }, [editingId, clients]);
+
+  const { isDirty: isClientModalDirty } = useFormPristine(initialClientModalState, currentClientModalState);
 
   const openEditModal = (client: Client) => {
     setEditingId(client.id);
@@ -1434,7 +1484,12 @@ export default function Clientes() {
                   </div>
                 </div>
                 <div className="bg-slate-800/50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse gap-3">
-                  <Button type="submit" variant="primary" className="w-full sm:ml-3 sm:w-auto">
+                  <Button 
+                    type="submit" 
+                    variant="primary" 
+                    disabled={!isClientModalDirty}
+                    className="w-full sm:ml-3 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
                     {editingId ? 'Actualizar' : 'Guardar Registro'}
                   </Button>
                   <Button type="button" variant="cancel" onClick={closeModal} className="mt-3 w-full sm:mt-0 sm:w-auto">

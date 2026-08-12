@@ -8,6 +8,7 @@ import { normalizeSupplyCode, normalizeSearchText, scoreClientSuppliesMatch } fr
 import { Client, Transaction } from '../store/types';
 import { toast } from 'react-hot-toast';
 import { generateGeneralPaymentReceiptPDF } from '../lib/receipts';
+import { useFormPristine } from '../hooks/useFormPristine';
 
 export default function VentaServicios() {
   const { confirm } = useConfirm();
@@ -47,6 +48,44 @@ export default function VentaServicios() {
     nombreVia: '',
     numeroDireccion: '',
   });
+
+  const currentVentaState = useMemo(() => ({
+    saleType,
+    selectedClientId,
+    useExistingAddress,
+    apellidoPaterno,
+    apellidoMaterno,
+    formData
+  }), [saleType, selectedClientId, useExistingAddress, apellidoPaterno, apellidoMaterno, formData]);
+
+  const initialVentaState = useMemo(() => ({
+    saleType: 'NEW_CLIENT' as const,
+    selectedClientId: '',
+    useExistingAddress: true,
+    apellidoPaterno: '',
+    apellidoMaterno: '',
+    formData: {
+      tipoPersona: 'PERSONA' as const,
+      nombres: '',
+      apellidos: '',
+      dni: '',
+      direccion: '',
+      sector: '',
+      referenciaDireccion: '',
+      telefono: '',
+      codigoSuministro: '',
+      numeroMedidor: '',
+      tipo: 'USUARIO' as const,
+      categoria: 'MONOFASICO' as const,
+      montoPagado: settings?.ventaNuevoServicio || 0,
+      observacionPago: 'Venta de Nuevo Servicio de Energía',
+      tipoVia: '',
+      nombreVia: '',
+      numeroDireccion: '',
+    }
+  }), [settings]);
+
+  const { isDirty: isVentaDirty } = useFormPristine(initialVentaState, currentVentaState);
 
   // Calculate Next Suministro ID automatically
   const handleAutoGenerateSuministro = () => {
@@ -726,7 +765,12 @@ export default function VentaServicios() {
                 
                 <div className="px-6 py-4 border-t border-slate-800 flex justify-end gap-3 bg-slate-900/50 rounded-b-lg">
                   <Button type="button" variant="cancel" onClick={() => setModalOpen(false)}>Cancelar</Button>
-                  <Button type="submit" variant="primary" className="bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/20">
+                  <Button 
+                    type="submit" 
+                    variant="primary" 
+                    disabled={!isVentaDirty}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
                     <CheckCircle className="w-4 h-4 mr-2" />
                     Registrar Venta
                   </Button>

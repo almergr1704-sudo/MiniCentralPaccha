@@ -10,6 +10,7 @@ import { useConfirm } from './ui/ConfirmDialog';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import bcrypt from 'bcryptjs';
+import { useFormPristine } from '../hooks/useFormPristine';
 
 interface MemberFormState {
   clientId: string;
@@ -194,6 +195,50 @@ export default function ComiteDirectivo() {
   const [tesorero, setTesorero] = useState<MemberFormState>({ clientId: '', supplyCodeExonerado: '' });
   const [fiscalizador, setFiscalizador] = useState<MemberFormState>({ clientId: '', supplyCodeExonerado: '' });
   const [vocal, setVocal] = useState<MemberFormState>({ clientId: '', supplyCodeExonerado: '' });
+
+  const currentComiteState = useMemo(() => ({
+    nombrePeriodo,
+    fechaInicio,
+    fechaFin,
+    activo,
+    presidente,
+    secretario,
+    tesorero,
+    fiscalizador,
+    vocal
+  }), [nombrePeriodo, fechaInicio, fechaFin, activo, presidente, secretario, tesorero, fiscalizador, vocal]);
+
+  const initialComiteState = useMemo(() => {
+    if (editingId && comites) {
+      const c = comites.find(item => item.id === editingId);
+      if (c) {
+        return {
+          nombrePeriodo: c.nombrePeriodo || '',
+          fechaInicio: c.fechaInicio || '',
+          fechaFin: c.fechaFin || '',
+          activo: c.activo || false,
+          presidente: { clientId: c.presidente?.clientId || '', supplyCodeExonerado: c.presidente?.supplyCodeExonerado || '' },
+          secretario: { clientId: c.secretario?.clientId || '', supplyCodeExonerado: c.secretario?.supplyCodeExonerado || '' },
+          tesorero: { clientId: c.tesorero?.clientId || '', supplyCodeExonerado: c.tesorero?.supplyCodeExonerado || '' },
+          fiscalizador: { clientId: c.fiscalizador?.clientId || '', supplyCodeExonerado: c.fiscalizador?.supplyCodeExonerado || '' },
+          vocal: { clientId: c.vocal?.clientId || '', supplyCodeExonerado: c.vocal?.supplyCodeExonerado || '' }
+        };
+      }
+    }
+    return {
+      nombrePeriodo: '',
+      fechaInicio: '',
+      fechaFin: '',
+      activo: false,
+      presidente: { clientId: '', supplyCodeExonerado: '' },
+      secretario: { clientId: '', supplyCodeExonerado: '' },
+      tesorero: { clientId: '', supplyCodeExonerado: '' },
+      fiscalizador: { clientId: '', supplyCodeExonerado: '' },
+      vocal: { clientId: '', supplyCodeExonerado: '' }
+    };
+  }, [editingId, comites]);
+
+  const { isDirty: isComiteDirty } = useFormPristine(initialComiteState, currentComiteState);
 
   // Get eligible partners (Socios Only)
   const sociosHabilitados = useMemo(() => {
@@ -1058,7 +1103,12 @@ export default function ComiteDirectivo() {
                 <Button type="button" variant="cancel" onClick={() => { resetForm(); setActiveTab('vigente'); }}>
                   Cancelar
                 </Button>
-                <Button type="submit" variant="primary">
+                <Button 
+                  type="submit" 
+                  variant="primary" 
+                  disabled={!isComiteDirty}
+                  className="disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   {editingId ? 'Actualizar Comité' : 'Guardar Comité Directivo'}
                 </Button>
               </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Shield, ShieldAlert, UserCheck, Plus, X, ChevronLeft, ChevronRight, Power, UserX, UserMinus, Search, Filter, Copy, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import { Card, CardContent, Badge, Button, Pagination } from '../components/ui';
@@ -10,6 +10,7 @@ import bcrypt from 'bcryptjs';
 import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useFormPristine } from '../hooks/useFormPristine';
 
 export default function Usuarios() {
   const { admins, updateAdmin, addAdmin, user, userRole } = useAppContext();
@@ -26,6 +27,26 @@ export default function Usuarios() {
   const [newRole, setNewRole] = useState<'ADMIN'|'TESORERO'|'OPERATOR'|'FISCALIZADOR'>('OPERATOR');
   const [creatingUser, setCreatingUser] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
+
+  const currentUserModalState = useMemo(() => ({
+    newNombres,
+    newApellidos,
+    newDni,
+    newEmail,
+    newRole,
+    newPassword
+  }), [newNombres, newApellidos, newDni, newEmail, newRole, newPassword]);
+
+  const initialUserModalState = useMemo(() => ({
+    newNombres: '',
+    newApellidos: '',
+    newDni: '',
+    newEmail: '',
+    newRole: 'OPERATOR' as const,
+    newPassword: ''
+  }), []);
+
+  const { isDirty: isUserModalDirty } = useFormPristine(initialUserModalState, currentUserModalState);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'TODOS' | 'ACTIVO' | 'INACTIVO'>('TODOS');
@@ -523,7 +544,12 @@ export default function Usuarios() {
                   </div>
                 </div>
                 <div className="px-4 py-3 bg-slate-800/30 sm:px-6 sm:flex sm:flex-row-reverse gap-3 border-t border-slate-800">
-                  <Button type="submit" variant="primary" disabled={creatingUser} className="w-full sm:ml-3 sm:w-auto">
+                  <Button 
+                    type="submit" 
+                    variant="primary" 
+                    disabled={creatingUser || !isUserModalDirty} 
+                    className="w-full sm:ml-3 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
                     {creatingUser ? 'Creando...' : 'Crear Usuario'}
                   </Button>
                   <Button type="button" variant="cancel" onClick={() => setIsModalOpen(false)} className="mt-3 w-full sm:mt-0 sm:w-auto">
